@@ -5,6 +5,7 @@ import io
 from flask import Flask, request, jsonify
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 from PIL import Image
+import torch
 
 # Load default model
 default_model_name = "microsoft/trocr-base-printed"
@@ -51,11 +52,12 @@ def extract_text(file_stream, model_name=None):
     try:
         doc = fitz.open(stream=file_stream.read(), filetype="pdf")
         text = ""
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'        
         for page in doc:
             img = page.get_pixmap()
             img_bytes = img.tobytes()
             image = Image.open(io.BytesIO(img_bytes))
-            inputs = processor(images=image, return_tensors="pt")
+            inputs = processor(images=image, return_tensors="pt").to(device)
             outputs = model.generate(**inputs)
             text += processor.batch_decode(outputs, skip_special_tokens=True)[0] + "\n"
     except Exception as e:
