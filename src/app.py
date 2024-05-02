@@ -1,11 +1,13 @@
 import fitz  # PyMuPDF
 import sentencepiece as spm
 import io
+import cv2
+import numpy as np
+import torch
 
 from flask import Flask, request, jsonify
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 from PIL import Image
-import torch
 
 # Load default model
 default_model_name = "microsoft/trocr-base-printed"
@@ -40,6 +42,17 @@ def create_app():
 
     return app
 
+def segment_lines(image):
+    gray = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    lines = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        line = image.crop((x, y, x + w, y + h))
+        lines.append(line)
+    return lines
+
 def extract_text(file_stream, model_name=None):
     global processor, model
     if model_name and model_name != default_model_name:
@@ -52,14 +65,18 @@ def extract_text(file_stream, model_name=None):
     try:
         doc = fitz.open(stream=file_stream.read(), filetype="pdf")
         text = ""
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'        
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        model = model.to(device)
+        
         for page in doc:
             img = page.get_pixmap()
             img_bytes = img.tobytes()
             image = Image.open(io.BytesIO(img_bytes))
-            inputs = processor(images=image, return_tensors="pt").to(device)
-            outputs = model.generate(**inputs)
-            text += processor.batch_decode(outputs, skip_special_tokens=True)[0] + "\n"
+            lines = segment_lines(image)
+            for line in lines:
+                inputs = processor(images=line, return_tensors="pt").to(device)
+                outputs = model.generate(**inputs)
+                text += processor.batch_decode(outputs, skip_special_tokens=True)[0] + "\n"
     except Exception as e:
         raise Exception(f"Error processing document: {e}")
 
