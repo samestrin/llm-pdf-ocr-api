@@ -1,5 +1,11 @@
 from flask import Flask, request, jsonify
-import ocr_service
+import fitz  # PyMuPDF
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+
+# Load default model
+default_model_name = "microsoft/trocr-base-printed"
+processor = TrOCRProcessor.from_pretrained(default_model_name)
+model = VisionEncoderDecoderModel.from_pretrained(default_model_name)
 
 def create_app():
     app = Flask(__name__)
@@ -8,12 +14,12 @@ def create_app():
     def ocr():
         file = request.files['file']
         model_name = request.form.get('model', None)
-        text = ocr_service.extract_text(file, model_name=model_name)                
+        text = extract_text(file, model_name=model_name)
         return jsonify({'text': text})
 
     @app.route('/models', methods=['GET'])
     def list_models():
-        models = ocr_service.get_supported_models()
+        models = get_supported_models()
         return jsonify({'supported_models': models})
 
     @app.errorhandler(400)
@@ -25,5 +31,34 @@ def create_app():
         return jsonify({'error': 'Internal server error'}), 500
 
     return app
+
+def extract_text(file_stream, model_name=None):
+    global processor, model
+    if model_name and model_name != default_model_name:
+        # Load model if a different one is requested
+        processor = TrOCRProcessor.from_pretrained(model_name)
+        model = VisionEncoderDecoderModel.from_pretrained(model_name)
+
+    doc = fitz.open(stream=file_stream.read(), filetype="pdf")
+    text = ""
+    for page in doc:
+        img = page.get_pixmap()
+        img_bytes = img.tobytes()
+        inputs = processor(images=img_bytes, return_tensors="pt")
+        outputs = model.generate(**inputs)
+        text += processor.batch_decode(outputs, skip_special_tokens=True)[0] + "\n"
+    return text
+
+def get_supported_models():
+    return [
+        "microsoft/trocr-large-handwritten",
+        "microsoft/trocr-large-printed",
+        "microsoft/trocr-small-printed",
+        "microsoft/trocr-small-handwritten",
+        "microsoft/trocr-base-handwritten",
+        "microsoft/trocr-base-printed",
+        "microsoft/trocr-base-stage1",
+        "microsoft/trocr-large-stage1"
+    ]
 
 app = create_app()
