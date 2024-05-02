@@ -15,12 +15,6 @@ _This is under active development._
 - **transformers**: Utilized for OCR capabilities using models from Hugging Face.
 - **torch**: Required for running the models from transformers.
 
-## Deploy to DigitalOcean App Platform
-
-Click this button to deploy the project to your Digital Ocean account:
-
-[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/tree/main&refcode=2d3f5d7c5fbe)
-
 ### Installation
 
 To install llm-pdf-ocr-api-digitalocean, follow these steps:
