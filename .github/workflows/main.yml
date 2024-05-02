@@ -1,0 +1,27 @@
+name: Update README Version Badge
+
+on:
+  push:
+    branches:
+      - main # Ensure this is your default branch
+    paths:
+      - ".version"
+  workflow_dispatch:
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update README
+        run: |
+          VERSION=$(cat .version)
+          sed -i "s/Version [0-9]*\.[0-9]*\.[0-9]*/Version $VERSION/g" README.md
+          sed -i "s/badge\/Version-[0-9]*\.[0-9]*\.[0-9]*-/badge\/Version-$VERSION-/g" README.md
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "Update version badge"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
