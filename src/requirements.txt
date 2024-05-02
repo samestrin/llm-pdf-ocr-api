@@ -5,3 +5,4 @@ torch
 gunicorn
 pillow
 sentencepiece
+opencv-python-headless
