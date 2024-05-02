@@ -25,9 +25,13 @@ Click this button to deploy the project to your Digital Ocean account:
 
 To install llm-pdf-ocr-api-digitalocean, follow these steps:
 
+Clone the Repository: Begin by cloning the repository containing the llm-newsletter-generator to your local machine.
+
 ```bash
 git clone https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/
 ```
+
+Navigate to the project directory:
 
 ```bash
 cd llm-pdf-ocr-api-digitalocean
