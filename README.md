@@ -10,15 +10,12 @@ The llm-pdf-ocr-api-digitalocean is a Flask-based web service designed to perfor
 
 1. Read the PDF file.
 2. For each page:
-
    - Render the page as an image.
    - Segment the image into individual lines of text.
    - For each line:
-
      - Preprocess the line image.
      - Feed the preprocessed line image into the TrOCR model to perform OCR and generate recognized text.
      - Append the recognized text to the output.
-
 3. Return the final output as JSON.
 
 _This is under active development._
