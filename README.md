@@ -56,7 +56,7 @@ pip install -r src/requirements.txt
 
 ## Endpoints
 
-### OCR Process
+### OCR
 
 **Endpoint:** `/ocr` **Method:** POST
 
