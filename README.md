@@ -48,6 +48,7 @@ pip install -r src/requirements.txt
 Process a PDF file and return the extracted text.
 
 - `file`: PDF file
+- `model`: Model name (optional) - defaults to [microsoft/trocr-base-printed](https://huggingface.co/microsoft/trocr-base-printed)
 
 **Endpoint:** `/models` **Method:** GET
 
