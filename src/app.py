@@ -1,9 +1,13 @@
-from flask import Flask, request, jsonify
 import fitz  # PyMuPDF
+import sentencepiece as spm
+import io
+
+from flask import Flask, request, jsonify
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from PIL import Image
 
 # Load default model
-default_model_name = "microsoft/trocr-base-printed"
+default_model_name = "microsoft/trocr-small-printed"
 processor = TrOCRProcessor.from_pretrained(default_model_name)
 model = VisionEncoderDecoderModel.from_pretrained(default_model_name)
 
@@ -35,16 +39,22 @@ def create_app():
 def extract_text(file_stream, model_name=None):
     global processor, model
     if model_name and model_name != default_model_name:
-        # Load model if a different one is requested
-        processor = TrOCRProcessor.from_pretrained(model_name)
-        model = VisionEncoderDecoderModel.from_pretrained(model_name)
+        try:
+            processor = TrOCRProcessor.from_pretrained(model_name)
+            model = VisionEncoderDecoderModel.from_pretrained(model_name)
+        except Exception as e:
+            # You can log the error or return a response indicating the failure
+            print(f"Error loading model: {e}")
+            return None  # or handle appropriately
 
     doc = fitz.open(stream=file_stream.read(), filetype="pdf")
     text = ""
     for page in doc:
         img = page.get_pixmap()
         img_bytes = img.tobytes()
-        inputs = processor(images=img_bytes, return_tensors="pt")
+        # Convert bytes to PIL Image
+        image = Image.open(io.BytesIO(img_bytes))
+        inputs = processor(images=image, return_tensors="pt")
         outputs = model.generate(**inputs)
         text += processor.batch_decode(outputs, skip_special_tokens=True)[0] + "\n"
     return text
