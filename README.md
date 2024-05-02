@@ -4,7 +4,7 @@
 
 ![Version 0.0.1](https://img.shields.io/badge/Version-0.0.1-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ](https://opensource.org/licenses/MIT)[![Built with Python](https://img.shields.io/badge/Built%20with-Python-green)](https://www.python.org/)
 
-The llm-pdf-ocr-api-digitalocean is a Flask-based web service designed to perform OCR on PDF files. It provides an endpoint for OCR processing.
+The llm-pdf-ocr-api-digitalocean is a Flask-based web service designed to perform OCR on PDF files. It provides an endpoint for OCR processing, and listing models.
 
 _This is under active development._
 
@@ -25,11 +25,19 @@ Click this button to deploy the project to your Digital Ocean account:
 
 To install llm-pdf-ocr-api-digitalocean, follow these steps:
 
-    git clone https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/
+```bash
+git clone https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/
+```
 
-    cd llm-pdf-ocr-api-digitalocean
+```bash
+cd llm-pdf-ocr-api-digitalocean
+```
 
-    pip install -r src/requirements.txt
+Install the required dependencies using pip:
+
+```bash
+pip install -r src/requirements.txt
+```
 
 ## Endpoints
 
@@ -39,11 +47,11 @@ To install llm-pdf-ocr-api-digitalocean, follow these steps:
 
 Process a PDF file and return the extracted text.
 
-### List Supported Languages
+- `file`: PDF file
 
-**Endpoint:** `/languages` **Method:** GET
+**Endpoint:** `/models` **Method:** GET
 
-List the supported languages for OCR, if multilingual support is available.
+Show all AI models available.
 
 ## Error Handling
 
