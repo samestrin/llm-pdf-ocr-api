@@ -10,10 +10,14 @@ _This is under active development._
 
 ## Dependencies
 
-- **Flask**: Used for creating the web server and handling the REST API HTTP requests.
-- **PyMuPDF**: Handles PDF files.
-- **transformers**: Utilized for OCR capabilities using models from Hugging Face.
-- **torch**: Required for running the models from transformers.
+- **Python**: The script runs ina Python3 environment.
+- **Flask**: Utilized for web development with Flask.
+- **gunicorn**: An extension that provides a Python WSGI HTTP Server for UNIX.
+- **Pillow**: Helps with image processing tasks through the Python Imaging Library (Fork).
+- **PyMuPDF**: Utilized for PDF parsing with Python bindings for the MuPDF library.
+- **sentencepiece**: Helps with unsupervised text tokenization and detokenization.
+- **torch**: Utilized for machine learning tasks in computer vision and natural language processing.
+- **transformers**: State-of-the-art Natural Language Processing for TensorFlow 2.0 and PyTorch.
 
 ### Installation
 
