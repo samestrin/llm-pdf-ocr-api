@@ -6,6 +6,21 @@
 
 The llm-pdf-ocr-api-digitalocean is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers, this experimental API provides endpoints for OCR processing and listing available models.
 
+### OCR Processing
+
+1. Read the PDF file.
+2. For each page:
+
+   - Render the page as an image.
+   - Segment the image into individual lines of text.
+   - For each line:
+
+     - Preprocess the line image.
+     - Feed the preprocessed line image into the TrOCR model to perform OCR and generate recognized text.
+     - Append the recognized text to the output.
+
+3. Return the final output as JSON.
+
 _This is under active development._
 
 ## Dependencies
@@ -13,6 +28,7 @@ _This is under active development._
 - **Python**: The script runs ina Python3 environment.
 - **Flask**: Utilized for web development with Flask.
 - **gunicorn**: An extension that provides a Python WSGI HTTP Server for UNIX.
+- **OpenCV**: Used to segment larger bodies of text into individual lines.
 - **Pillow**: Helps with image processing tasks through the Python Imaging Library (Fork).
 - **PyMuPDF**: Utilized for PDF parsing with Python bindings for the MuPDF library.
 - **sentencepiece**: Helps with unsupervised text tokenization and detokenization.
