@@ -6,28 +6,41 @@
 
 **llm-pdf-ocr-api-digitalocean** is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers, this experimental API provides endpoints for OCR processing and listing available models.
 
-_This project is under active development._
+### OCR Process Overview
 
-### OCR Process Flow
+When a user submits a file to the /ocr endpoint, the following steps are executed:
 
-1. Read the PDF file.
-2. For each page:
-   - Render the page as an image.
-   - Segment the image into individual lines of text.
-   - For each line:
-     - Preprocess the line image.
-     - Feed the preprocessed line image into the TrOCR model to perform OCR and generate recognized text.
-     - Append the recognized text to the output.
-3. Return the final output as JSON.
+1.  **Receive the Request:**
+    - The server accepts a POST request containing the PDF file and optional parameters for OCR settings.
+2.  **Extract and Open the PDF:**
+    - The PDF file is extracted from the form data and opened to access its content.
+3.  **Configure OCR Parameters:**
+    - Parameters for the OCR process, such as the model and image processing settings, are set with defaults applied where not specified.
+      - Optional parameters are read from the form data, such as `model`, `threshold_value`, `kernel_width`, `kernel_height`, and `min_area`.
+      - Defaults are used for any parameters not provided.
+4.  **Process Each Page:**
+    - Each page of the PDF is processed sequentially. The steps include:
+      - Rendering the page as an image.
+      - Converting the image to grayscale and applying binary thresholding.
+      - Performing morphological operations to enhance image clarity.
+      - Extracting lines using contour detection and filtering by area.
+5.  **Extract Text:**
+    - Text is extracted from each line of the image using the TrOCR model. The text from all lines is compiled into a single output.
+6.  **Return the Response:**
+    - The extracted text is sent back in a JSON response.
+7.  **Handle Errors:**
+    - Errors during processing are caught and returned as a detailed error message.
 
 ## Dependencies
 
 - **Python**: The script runs ina Python3 environment.
-- **Flask**: Utilized for web development with Flask.
+- **Flask**: Serves as the backbone of the web application, facilitating the creation of endpoints and handling HTTP requests.
+- **google-protobuf**: Utilized for data serialization and deserialization, important for model loading and configuration.
 - **gunicorn**: An extension that provides a Python WSGI HTTP Server for UNIX.
-- **OpenCV**: Used to segment larger bodies of text into individual lines.
-- **Pillow**: Helps with image processing tasks through the Python Imaging Library (Fork).
-- **PyMuPDF**: Utilized for PDF parsing with Python bindings for the MuPDF library.
+- **numpy**: Supports high-performance operations on large multi-dimensional arrays and matrices, used extensively in image manipulation.
+- **OpenCV (opencv-python-headless)**: Used to segment larger bodies of text into individual lines.
+- **Pillow (PIL)**: Helps with image processing tasks through the Python Imaging Library (Fork).
+- **PyMuPDF (fitz)**: Utilized for PDF parsing with Python bindings for the MuPDF library.
 - **sentencepiece**: Helps with unsupervised text tokenization and detokenization.
 - **torch**: Utilized for machine learning tasks in computer vision and natural language processing.
 - **transformers**: State-of-the-art Natural Language Processing for TensorFlow 2.0 and PyTorch.
@@ -63,7 +76,11 @@ pip install -r src/requirements.txt
 Process a PDF file and return the extracted text.
 
 - `file`: PDF file
-- _`model`: Model name (optional) - defaults to [microsoft/trocr-base-printed](https://huggingface.co/microsoft/trocr-base-printed) Currently under active development._
+- `model` (optional): Specifies the OCR model to be used for text extraction. Defaults to microsoft/trocr-base-printed if not provided.
+- `threshold_value` (optional): Determines the threshold value for binary thresholding of images. The default value is 150.
+- `kernel_width` (optional): Defines the width of the kernel used in morphological operations to clean up the image. It defaults to 20.
+- `kernel_height` (optional): Specifies the height of the kernel used in morphological operations. The default is 1.
+- `min_area` (optional): Sets the minimum area of contours that are considered as valid lines of text. The default minimum area is 50.
 
 **Endpoint:** `/models` **Method:** GET
 
