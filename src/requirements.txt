@@ -6,3 +6,4 @@ gunicorn
 pillow
 sentencepiece
 opencv-python-headless
+protobuf
