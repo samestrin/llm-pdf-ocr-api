@@ -33,7 +33,7 @@ When a user submits a file to the /ocr endpoint, the following steps are execute
 
 ## Dependencies
 
-- **Python**: The script runs ina Python3 environment.
+- **Python**: The script runs in a Python3 environment.
 - **Flask**: Serves as the backbone of the web application, facilitating the creation of endpoints and handling HTTP requests.
 - **google-protobuf**: Utilized for data serialization and deserialization, important for model loading and configuration.
 - **gunicorn**: An extension that provides a Python WSGI HTTP Server for UNIX.
