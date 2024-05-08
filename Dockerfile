@@ -39,8 +39,5 @@ COPY . .
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
 
-# Define environment variable
-ENV NAME World
-
 # Run the application
 CMD ["gunicorn", "src.app:app", "-w", "4", "-b", "0.0.0.0:5000"]
