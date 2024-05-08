@@ -1,10 +1,10 @@
-# llm-pdf-ocr-api-digitalocean
+# llm-pdf-ocr-api
 
-[![Star on GitHub](https://img.shields.io/github/stars/samestrin/llm-pdf-ocr-api-digitalocean?style=social)](https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/stargazers)[![Fork on GitHub](https://img.shields.io/github/forks/samestrin/llm-pdf-ocr-api-digitalocean?style=social) ](https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/network/members)[![Watch on GitHub](https://img.shields.io/github/watchers/samestrin/llm-pdf-ocr-api-digitalocean?style=social)](https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/watchers)
+[![Star on GitHub](https://img.shields.io/github/stars/samestrin/llm-pdf-ocr-api?style=social)](https://github.com/samestrin/llm-pdf-ocr-api/stargazers)[![Fork on GitHub](https://img.shields.io/github/forks/samestrin/llm-pdf-ocr-api?style=social) ](https://github.com/samestrin/llm-pdf-ocr-api/network/members)[![Watch on GitHub](https://img.shields.io/github/watchers/samestrin/llm-pdf-ocr-api?style=social)](https://github.com/samestrin/llm-pdf-ocr-api/watchers)
 
 ![Version 0.0.1](https://img.shields.io/badge/Version-0.0.1-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ](https://opensource.org/licenses/MIT)[![Built with Python](https://img.shields.io/badge/Built%20with-Python-green)](https://www.python.org/)
 
-**llm-pdf-ocr-api-digitalocean** is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers and optimized with NVIDIA CUDA, this API provides two endpoints, one for OCR processing, and one for listing available models. This API deploys to DigitalOcean within a Docker container.
+**llm-pdf-ocr-api** is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers and optimized with NVIDIA CUDA, this API provides two endpoints, one for OCR processing, and one for listing available models. This API deploys to DigitalOcean within a Docker container.
 
 ### OCR Process Overview
 
@@ -47,18 +47,18 @@ When a user submits a file to the /ocr endpoint, the following steps are execute
 
 ### Installation
 
-To install llm-pdf-ocr-api-digitalocean, follow these steps:
+To install llm-pdf-ocr-api, follow these steps:
 
 Begin by cloning the repository containing the llm-newsletter-generator to your local machine.
 
 ```bash
-git clone https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/
+git clone https://github.com/samestrin/llm-pdf-ocr-api/
 ```
 
 Navigate to the project directory:
 
 ```bash
-cd llm-pdf-ocr-api-digitalocean
+cd llm-pdf-ocr-api
 ```
 
 Install the required dependencies using pip:
@@ -103,4 +103,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Share
 
-[![Twitter](https://img.shields.io/badge/X-Tweet-blue)](https://twitter.com/intent/tweet?text=Check%20out%20this%20awesome%20project!&url=https://github.com/samestrin/llm-pdf-ocr-api-digitalocean) [![Facebook](https://img.shields.io/badge/Facebook-Share-blue)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/samestrin/llm-pdf-ocr-api-digitalocean) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Share-blue)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/samestrin/llm-pdf-ocr-api-digitalocean)
+[![Twitter](https://img.shields.io/badge/X-Tweet-blue)](https://twitter.com/intent/tweet?text=Check%20out%20this%20awesome%20project!&url=https://github.com/samestrin/llm-pdf-ocr-api) [![Facebook](https://img.shields.io/badge/Facebook-Share-blue)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/samestrin/llm-pdf-ocr-api) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Share-blue)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/samestrin/llm-pdf-ocr-api)
