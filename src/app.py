@@ -15,7 +15,6 @@ import io
 import cv2
 import numpy as np
 import torch
-import os
 import google.protobuf
 
 from flask import Flask, request, jsonify
