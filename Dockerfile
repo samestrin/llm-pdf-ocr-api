@@ -17,20 +17,13 @@ RUN python -m venv venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Copy the requirements files
-COPY src/core.txt src/image_processing.txt src/torch.txt src/nlp.txt ./
+COPY src/requirements.txt ./
 
 # Install Python dependencies inside the virtual environment
 # Install core web functionality
-RUN pip install --no-cache-dir --timeout=120 -r core.txt
+RUN pip install --no-cache-dir --timeout=120 -r requirements.txt
 
-# Install image processing libraries
-RUN pip install --no-cache-dir --timeout=120 -r image_processing.txt
 
-# Install ML libraries
-RUN pip install --no-cache-dir --timeout=120 -r torch.txt
-
-# Install NLP libraries
-RUN pip install --no-cache-dir --timeout=120 -r nlp.txt
 
 
 # Copy the rest of the application into the container
