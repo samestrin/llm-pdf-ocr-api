@@ -1,8 +1,8 @@
 """
 llm-pdf-ocr-api-digitalocean is a Flask-based web service designed to perform Optical Character 
-Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers, 
-this API provides two endpoints, one for OCR processing, and one for listing available models. This 
-API deploys to DigitalOcean within a Docker container.
+Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers 
+and optimized with NVIDIA CUDA, this API provides two endpoints, one for OCR processing, and one 
+for listing available models. This API deploys to DigitalOcean within a Docker container.
 
 Copyright (c) 2024-PRESENT Sam Estrin
 This script is licensed under the MIT License (see LICENSE for details)
@@ -156,20 +156,12 @@ def extract_text(file_stream, model_name=None, threshold_value=150, kernel_width
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         model = model.to(device)
 
-        debug_dir = "debug_line_images"
-        os.makedirs(debug_dir, exist_ok=True)
-        line_counter = 0
-
-        for page_number, page in enumerate(doc):
+        for page in doc:
             img = page.get_pixmap()
             img_bytes = img.tobytes()
             image = Image.open(io.BytesIO(img_bytes))
             lines = segment_lines(image, threshold_value, kernel_width, kernel_height, min_area)
             for line in lines:
-                line_image_path = os.path.join(debug_dir, f"line_{page_number}_{line_counter}.png")
-                line.save(line_image_path)
-                line_counter += 1
-
                 inputs = processor(images=line, return_tensors="pt").to(device)
                 outputs = model.generate(**inputs)
                 text += processor.batch_decode(outputs, skip_special_tokens=True)[0] + "\n"
