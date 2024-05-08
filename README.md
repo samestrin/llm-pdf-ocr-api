@@ -47,7 +47,7 @@ When a user submits a file to the /ocr endpoint, the following steps are execute
 
 ## Deploy to DigitalOcean App Platform
 
-Click this button to deploy the project to your Digital Ocean account:
+Click this button to deploy the project to your Digital Ocean account. Please note your resource instance needs at least 4GB of RAM.
 
 [![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/tree/main&refcode=2d3f5d7c5fbe)
 
