@@ -1,12 +1,12 @@
 """
-llm-pdf-ocr-api-digitalocean is a Flask-based web service designed to perform Optical Character 
+llm-pdf-ocr-api is a Flask-based web service designed to perform Optical Character 
 Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers 
 and optimized with NVIDIA CUDA, this API provides two endpoints, one for OCR processing, and one 
 for listing available models. This API deploys to DigitalOcean within a Docker container.
 
 Copyright (c) 2024-PRESENT Sam Estrin
 This script is licensed under the MIT License (see LICENSE for details)
-GitHub: https://github.com/samestrin/llm-pdf-ocr-api-digitalocean
+GitHub: https://github.com/samestrin/llm-pdf-ocr-api
 """
 
 import fitz  # PyMuPDF
