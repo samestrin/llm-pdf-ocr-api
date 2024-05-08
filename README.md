@@ -45,6 +45,12 @@ When a user submits a file to the /ocr endpoint, the following steps are execute
 - **torch**: Utilized for machine learning tasks in computer vision and natural language processing.
 - **transformers**: State-of-the-art Natural Language Processing for TensorFlow 2.0 and PyTorch.
 
+## Deploy to DigitalOcean App Platform
+
+Click this button to deploy the project to your Digital Ocean account:
+
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/samestrin/llm-pdf-ocr-api-digitalocean/tree/main&refcode=2d3f5d7c5fbe)
+
 ### Installation
 
 To install llm-pdf-ocr-api-digitalocean, follow these steps:
