@@ -1,0 +1,11 @@
+spec:
+  name: llm-pdf-ocr-api
+  services:
+    - dockerfile_path: Dockerfile
+      name: llm-pdf-ocr-api
+      git:
+        repo_clone_url: https://github.com/samestrin/llm-pdf-ocr-api-digital-ocean.git
+        branch: main
+      source_dir: /src
+      routes:
+        - path: /
