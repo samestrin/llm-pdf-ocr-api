@@ -148,9 +148,7 @@ def test_empty_bytes_are_rejected():
 def test_encrypted_pdf_is_rejected():
     doc = pymupdf.open()
     doc.new_page().insert_text((72, 72), "secret")
-    data = doc.tobytes(
-        encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="user"
-    )
+    data = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="user")
 
     with pytest.raises(EncryptedPdfError):
         read_pdf(data)
@@ -161,3 +159,75 @@ def test_pdf_errors_share_a_base_class():
 
     assert issubclass(InvalidPdfError, PdfReadError)
     assert issubclass(EncryptedPdfError, PdfReadError)
+
+
+# Geometry edge cases
+
+
+def _tall_watermarked_scan(rotation: int) -> bytes:
+    doc = pymupdf.open()
+    page = doc.new_page(width=300, height=900)
+    image = pymupdf.Pixmap(pymupdf.csGRAY, pymupdf.IRect(0, 0, 30, 90), False)
+    image.clear_with(200)
+    page.insert_image(page.rect, pixmap=image, keep_proportion=False)
+    page.insert_text((20, 880), "Scanned by CamScanner", fontname="helv", fontsize=8)
+    page.set_rotation(rotation)
+    return doc.tobytes()
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_watermarked_scan_is_not_usable_at_any_rotation(rotation):
+    page = read_pdf(_tall_watermarked_scan(rotation))[0]
+
+    assert page.problem is TextLayerProblem.IMAGE_WITH_LITTLE_TEXT
+
+
+def test_rotated_two_column_page_keeps_reading_order():
+    doc = pymupdf.open(FIXTURES / "born_digital.pdf")
+    doc[0].set_rotation(90)
+
+    text = read_pdf(doc.tobytes())[0].text
+
+    assert_in_order(
+        text, "Quarterly Report", "Left column second paragraph.", "Right column first paragraph."
+    )
+
+
+def test_lines_written_bottom_first_inside_a_block_read_top_to_bottom():
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((100, 110), "second line of overlap", fontname="helv", fontsize=11)
+    page.insert_text((72, 100), "first line of overlap here", fontname="helv", fontsize=24)
+
+    text = read_pdf(doc.tobytes())[0].text
+
+    assert_in_order(text, "first line of overlap here", "second line of overlap")
+
+
+def test_lines_on_one_row_inside_a_block_join_with_a_space():
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Name:", fontname="helv", fontsize=11)
+    page.insert_text((110, 100), "Ada Lovelace", fontname="helv", fontsize=11)
+    page.insert_text((72, 114), "Born: 1815", fontname="helv", fontsize=11)
+
+    text = read_pdf(doc.tobytes())[0].text
+
+    assert text == "Name: Ada Lovelace\nBorn: 1815"
+
+
+def test_blocks_that_overlap_on_both_axes_read_top_then_left():
+    from llm_pdf_ocr.pdf import _Block, _Line, _reading_order
+
+    def block(name, bbox):
+        return _Block((_Line(name, bbox),), bbox)
+
+    lower = block("lower", (50, 20, 150, 40))
+    upper = block("upper", (0, 0, 100, 30))
+    beside = block("beside", (90, 0, 200, 25))
+
+    assert [b.lines[0].text for b in _reading_order([lower, beside, upper])] == [
+        "upper",
+        "beside",
+        "lower",
+    ]
