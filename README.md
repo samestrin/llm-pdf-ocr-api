@@ -4,7 +4,7 @@
 
 ![Version 0.0.1](https://img.shields.io/badge/Version-0.0.1-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ](https://opensource.org/licenses/MIT)[![Built with Python](https://img.shields.io/badge/Built%20with-Python-green)](https://www.python.org/)
 
-**llm-pdf-ocr-api** is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers and optimized with NVIDIA CUDA, this API provides two endpoints, one for OCR processing, and one for listing available models. This API is wrapped in a Docker container.
+**llm-pdf-ocr-api** is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers and optimized with NVIDIA CUDA, this API provides an endpoint for OCR processing. This API is wrapped in a Docker container.
 
 ### OCR Process Overview
 
@@ -61,10 +61,10 @@ Navigate to the project directory:
 cd llm-pdf-ocr-api
 ```
 
-Install the required dependencies using pip:
+Install the required dependencies using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-pip install -r src/requirements.txt
+uv sync
 ```
 
 ## Endpoints
@@ -81,10 +81,6 @@ Process a PDF file and return the extracted text.
 - `kernel_width` (optional): Defines the width of the kernel used in morphological operations to clean up the image. It defaults to 20.
 - `kernel_height` (optional): Specifies the height of the kernel used in morphological operations. The default is 1.
 - `min_area` (optional): Sets the minimum area of contours that are considered as valid lines of text. The default minimum area is 50.
-
-**Endpoint:** `/models` **Method:** GET
-
-Show all AI models available.
 
 ## Error Handling
 
