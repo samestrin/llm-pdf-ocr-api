@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Tests with 80% coverage gate
+        run: uv run pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t llm-pdf-ocr-api:ci .
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name api -p 5000:5000 llm-pdf-ocr-api:ci
+          for i in $(seq 1 20); do curl -fsS localhost:5000/health && exit 0; sleep 1; done
+          docker logs api; exit 1
