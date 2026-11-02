@@ -231,3 +231,16 @@ def test_blocks_that_overlap_on_both_axes_read_top_then_left():
         "beside",
         "lower",
     ]
+
+
+def test_image_coverage_of_a_zero_area_page_is_zero():
+    from llm_pdf_ocr.pdf import _image_coverage
+
+    class ZeroAreaPage:
+        rect = pymupdf.Rect(0, 0, 0, 0)
+        derotation_matrix = pymupdf.Identity
+
+        def get_image_info(self):
+            return [{"bbox": (0, 0, 10, 10)}]
+
+    assert _image_coverage(ZeroAreaPage()) == 0.0
