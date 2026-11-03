@@ -1,8 +1,8 @@
 """Jobs held in memory, for PDFs too long to read in one request.
 
 A job is `queued`, `running`, then `done` or `failed`. It holds the PDF bytes
-only until it ends; its result is dropped once it has been finished for `ttl`
-seconds, and the job is forgotten. At most `max_jobs` jobs are held at once,
+only until it ends; its result and page images are dropped once it has been
+finished for `ttl` seconds, and the job is forgotten. At most `max_jobs` jobs are held at once,
 finished ones included until they expire. Jobs run one at a time, in a thread of
 this process: they are only visible to the process that holds them, so the
 service must run a single uvicorn worker.
@@ -34,7 +34,8 @@ class TooManyJobsError(Exception):
 
 
 class Job:
-    """One job. `pages` maps each selected page to `pending`, `ok` or `failed`."""
+    """One job. `pages` maps each selected page to `pending`, `ok` or `failed`;
+    `images` maps a page to its PNG once it is rendered."""
 
     def __init__(self, job_id: str, data: bytes, options: dict[str, Any]):
         self.id = job_id
@@ -42,6 +43,7 @@ class Job:
         self.options = options
         self.status = JobStatus.QUEUED
         self.pages: dict[int, str] = {}
+        self.images: dict[int, bytes] = {}
         self.pages_total: int | None = None
         self.result: Any = None
         self.error: dict[str, str] | None = None
@@ -124,4 +126,5 @@ class JobStore:
             if job.finished_at is not None and now - job.finished_at >= self.ttl:
                 job.result = None
                 job.error = None
+                job.images = {}
                 del self._jobs[job_id]

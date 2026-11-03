@@ -118,9 +118,12 @@ For a long PDF that takes minutes to read. `POST /v1/jobs` takes the same fields
 ```bash
 curl -F file=@long.pdf -F format=json localhost:5000/v1/jobs
 curl localhost:5000/v1/jobs/<id>
+curl -o page1.png localhost:5000/v1/jobs/<id>/pages/1.png
 ```
 
-Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+While a job runs it renders each page it reads as a PNG (100 DPI, longer side at most 1600 px), served at `GET /v1/jobs/{id}/pages/{n}.png`. A page the job does not read, or has not rendered yet, answers 404 `page_not_found`.
+
+Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result and page images `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
 
 ### Web page
 
