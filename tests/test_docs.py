@@ -116,3 +116,31 @@ def test_every_example_lets_a_caller_pick_only_the_listed_models(server, heading
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "model_not_allowed"
     assert server.requests == []
+
+
+README = (Path(__file__).parent.parent / "README.md").read_text()
+CI = (Path(__file__).parent.parent / ".github" / "workflows" / "ci.yml").read_text()
+
+
+def readme_commands() -> list[str]:
+    blocks = re.findall(r"^```bash\n(.*?)^```$", README, re.M | re.S)
+    return [line for block in blocks for line in block.splitlines()]
+
+
+def test_the_readme_docker_run_line_names_the_published_image():
+    runs = [c for c in readme_commands() if c.startswith("docker run") and "ghcr.io" in c]
+    assert runs == ["docker run -p 5000:5000 ghcr.io/samestrin/llm-pdf-ocr-api"]
+
+
+def test_the_readme_local_build_and_run_is_what_the_ci_docker_job_runs():
+    commands = readme_commands()
+    build = "docker build -t llm-pdf-ocr-api ."
+    run = "docker run -d --name api -p 5000:5000 llm-pdf-ocr-api"
+    assert build in commands and run in commands
+    ci = CI.split("docker:", 1)[1].replace("llm-pdf-ocr-api:ci", "llm-pdf-ocr-api")
+    assert build in ci and run in ci
+
+
+def test_the_readme_version_badge_says_1_0_0():
+    assert "Version-1.0.0-blue" in README
+    assert "0.0.1-blue" not in README
