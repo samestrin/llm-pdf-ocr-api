@@ -1,0 +1,40 @@
+NIST SP 800-63-3
+
+DIGITAL IDENTITY GUIDELINES
+vi
+This publication is available free of charge from: https://doi.org/10.6028/NIST.SP.800-63-3
+These guidelines are organized as follows:
+SP 800-63 Digital Identity Guidelines (This document)
+SP 800-63 provides an overview of general identity frameworks, using authenticators,
+credentials, and assertions together in a digital system, and a risk-based process of selecting
+assurance levels. SP 800-63 contains both normative and informative material.
+SP 800-63A Enrollment and Identity Proofing
+NIST SP 800-63-A addresses how applicants can prove their identities and become enrolled as
+valid subscribers within an identity system. It provides requirements by which applicants can
+both identity proof and enroll at one of three different levels of risk mitigation in both remote
+and physically-present scenarios. SP 800-63A contains both normative and informative material.
+SP 800-63A sets requirements to achieve a given IAL. The three IALs reflect the options
+agencies may select from based on their risk profile and the potential harm caused by an attacker
+making a successful false claim of an identity. The IALs are as follows:
+IAL1: There is no requirement to link the applicant to a specific real-life identity. Any attributes
+provided in conjunction with the authentication process are self-asserted or should be treated as
+such (including attributes a Credential Service Provider, or CSP, asserts to an RP).
+IAL2: Evidence supports the real-world existence of the claimed identity and verifies that the
+applicant is appropriately associated with this real-world identity. IAL2 introduces the need for
+either remote or physically-present identity proofing. Attributes can be asserted by CSPs to RPs
+in support of pseudonymous identity with verified attributes.
+IAL3: Physical presence is required for identity proofing. Identifying attributes must be verified
+by an authorized and trained representative of the CSP. As with IAL2, attributes can be asserted
+by CSPs to RPs in support of pseudonymous identity with verified attributes.
+SP 800-63B Authentication and Lifecycle Management
+For services in which return visits are applicable, a successful authentication provides reasonable
+risk-based assurances that the subscriber accessing the service today is the same as that which
+accessed the service previously. The robustness of this confidence is described by an AAL
+categorization. NIST SP 800-63B addresses how an individual can securely authenticate to a
+CSP to access a digital service or set of digital services. SP 800-63B contains both normative
+and informative material.
+The three AALs define the subsets of options agencies can select based on their risk profile and
+the potential harm caused by an attacker taking control of an authenticator and accessing
+agencies’ systems. The AALs are as follows:
+AAL1: AAL1 provides some assurance that the claimant controls an authenticator bound to the
+subscriber’s account. AAL1 requires either single-factor or multi-factor authentication using a

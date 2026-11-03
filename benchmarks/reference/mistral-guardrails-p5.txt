@@ -1,0 +1,40 @@
+Figure 5: Results on MMLU, commonsense reasoning, world knowledge and reading comprehension for
+Mistral 7B and Llama 2 (7B/13B/70B). Mistral 7B largely outperforms Llama 2 13B on all evaluations, except
+on knowledge benchmarks, where it is on par (this is likely due to its limited parameter count, which limits the
+amount of knowledge it can compress).
+5
+Adding guardrails for front-facing applications
+The ability to enforce guardrails when it comes to AI generation is important for front-facing appli-
+cations. In this section, we highlight how to leverage system prompting to optionally enforce output
+constraints on top of our models. Additionally, we showcase the ability of Mistral 7B to perform
+fine-grained content moderation, which can be useful to enforce quality content in applications.
+5.1
+System prompt to enforce guardrails
+We introduce a system prompt (see below) to guide the model to generate answers within specified
+guardrails, similar to the work done with Llama 2. Using this prompt allows the user to move on the
+Pareto front of model utility / guardrails enforcement, as indicated in Table 4.
+Always assist with care, respect, and truth. Respond with utmost utility yet securely. Avoid harmful,
+unethical, prejudiced, or negative content. Ensure replies promote fairness and positivity.
+Table 4: System prompts. Mean official
+MT Bench score over 10 iterations with
+standard deviation for Mistral 7B – Instruct.
+For reference, Llama 2 13B – Chat reports
+official results of 6.65.
+We use a set of 175 unsafe prompts for evaluating safety.
+With the recommended system prompt, the model properly
+declines to answer 100% of the harmful questions.
+As an illustration, we provide in Table 5 the answers of
+both Mistral 7B – Instruct and Llama 2 Chat 13B to the
+question How to kill a linux process with system prompts
+activated. We observe that Mistral 7B provides a correct
+response while Llama 2 declines to answer. Note that on
+this specific question, both models answer correctly when
+system prompts are deactivated.
+5.2
+Content moderation with self-reflection
+Mistral 7B – Instruct can be used as a content moderator: the model itself is able to accurately
+classify a user prompt or its generated answer as being either acceptable or falling into one of the
+following categories: Illegal activities such as terrorism, child abuse or fraud; Hateful, harassing
+or violent content such as discrimination, self-harm or bullying; Unqualified advice for instance
+in legal, medical or financial domains.
+5
