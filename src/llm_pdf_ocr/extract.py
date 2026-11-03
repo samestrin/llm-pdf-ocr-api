@@ -19,7 +19,14 @@ from pydantic import BaseModel, ConfigDict, computed_field
 
 from llm_pdf_ocr import vision as vision_model
 from llm_pdf_ocr.config import VisionConfig
-from llm_pdf_ocr.ocr import DEFAULT_LANGUAGE, OcrError, TesseractNotFoundError, ocr_page
+from llm_pdf_ocr.ocr import (
+    DEFAULT_LANGUAGE,
+    TIMEOUT_SECONDS,
+    OcrError,
+    OcrTimeoutError,
+    TesseractNotFoundError,
+    ocr_page,
+)
 from llm_pdf_ocr.pdf import InvalidPdfError, open_pdf, read_page
 
 
@@ -48,6 +55,7 @@ class ErrorCode(StrEnum):
     TESSERACT_NOT_FOUND = "tesseract_not_found"
     NO_TEXT_LAYER = "no_text_layer"
     VISION_FAILED = "vision_failed"
+    PAGE_TIMEOUT = "page_timeout"
 
 
 class VisionNotConfiguredError(ValueError):
@@ -66,6 +74,12 @@ class PageOutOfRangeError(PageRangeError):
     """A page range names a page the PDF does not have."""
 
     code = "page_out_of_range"
+
+
+class TooManyPagesError(ValueError):
+    """More pages were selected than one request may read."""
+
+    code = "too_many_pages"
 
 
 class PageError(BaseModel):
@@ -143,14 +157,18 @@ def extract_pdf(
     method: MethodChoice = MethodChoice.AUTO,
     model: str | None = None,
     vision: VisionConfig | None = None,
+    max_pages: int | None = None,
+    page_timeout: float = TIMEOUT_SECONDS,
 ) -> Document:
     """Read every page, or only those in the range `pages` (such as `1-3,5`), with
     `method`. `vision` is the operator's vision backend; without one, `auto` is the
-    text layer where usable and Tesseract otherwise.
+    text layer where usable and Tesseract otherwise. Tesseract gets `page_timeout`
+    seconds per page.
 
     Before any page is read, a `model` the operator does not allow raises
-    `ModelNotAllowedError` (with no backend, every model is refused), and forcing
-    `vision` with no backend raises `VisionNotConfiguredError`. A page that fails
+    `ModelNotAllowedError` (with no backend, every model is refused), forcing
+    `vision` with no backend raises `VisionNotConfiguredError`, and more than
+    `max_pages` selected pages raises a `TooManyPagesError`. A page that fails
     does not stop the others. A PDF that cannot be opened raises a `PdfReadError`;
     a bad range raises a `PageRangeError`.
     """
@@ -163,10 +181,15 @@ def extract_pdf(
         if not len(doc):
             raise InvalidPdfError("the PDF has no pages")
         numbers = range(1, len(doc) + 1) if pages is None else parse_pages(pages, len(doc))
+        if max_pages is not None and len(numbers) > max_pages:
+            raise TooManyPagesError(
+                f"{len(numbers)} pages selected; the limit is {max_pages}. "
+                "Ask for fewer with `pages`"
+            )
         results: dict[int, Page] = {}
         for_vision = []
         for n in numbers:
-            page = _route_page(doc[n - 1], method, vision.enabled, language)
+            page = _route_page(doc[n - 1], method, vision.enabled, language, page_timeout)
             if page is None:
                 for_vision.append(n)
             else:
@@ -214,12 +237,14 @@ def _json_page(page: dict) -> dict:
     }
 
 
-def _route_page(page, method: MethodChoice, vision_enabled: bool, language: str) -> Page | None:
+def _route_page(
+    page, method: MethodChoice, vision_enabled: bool, language: str, timeout: float
+) -> Page | None:
     """Read one page by any method but vision; None means it goes to the vision model."""
     if method is MethodChoice.VISION:
         return None
     if method is MethodChoice.TESSERACT:
-        return _ocr(page, language)
+        return _ocr(page, language, timeout)
     number = page.number + 1
     try:
         layer = read_page(page)
@@ -238,15 +263,17 @@ def _route_page(page, method: MethodChoice, vision_enabled: bool, language: str)
         )
     if vision_enabled:
         return None
-    return _ocr(page, language)
+    return _ocr(page, language, timeout)
 
 
-def _ocr(page, language: str) -> Page:
+def _ocr(page, language: str, timeout: float) -> Page:
     number = page.number + 1
     try:
-        result = ocr_page(page, language)
+        result = ocr_page(page, language, timeout=timeout)
     except TesseractNotFoundError as exc:
         return _failed(number, Method.TESSERACT, ErrorCode.TESSERACT_NOT_FOUND, str(exc))
+    except OcrTimeoutError as exc:
+        return _failed(number, Method.TESSERACT, ErrorCode.PAGE_TIMEOUT, str(exc))
     except OcrError as exc:
         return _failed(number, Method.TESSERACT, ErrorCode.OCR_FAILED, str(exc))
     except Exception:  # e.g. a page that cannot be rendered; the message stays generic

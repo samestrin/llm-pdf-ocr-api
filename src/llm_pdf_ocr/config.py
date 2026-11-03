@@ -1,4 +1,4 @@
-"""Vision-model backend settings, read from the environment.
+"""Settings read from the environment: request limits and the vision-model backend.
 
 The backend is off unless OCR_LLM_BASE_URL is set. Nothing here contacts the network.
 """
@@ -9,6 +9,10 @@ from dataclasses import dataclass
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_CONCURRENCY = 2
+DEFAULT_MAX_FILE_MB = 50
+DEFAULT_MAX_PAGES = 500
+DEFAULT_PAGE_TIMEOUT = 120.0
+_MiB = 1024 * 1024
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off", ""}
@@ -20,6 +24,15 @@ class ConfigError(ValueError):
 
 class ModelNotAllowedError(ValueError):
     """The requested model is not on the list a caller may pick from."""
+
+
+@dataclass(frozen=True)
+class Limits:
+    """What one request may ask for: upload bytes, pages selected, seconds per OCR page."""
+
+    max_file_bytes: int = DEFAULT_MAX_FILE_MB * _MiB
+    max_pages: int = DEFAULT_MAX_PAGES
+    page_timeout: float = DEFAULT_PAGE_TIMEOUT
 
 
 @dataclass(frozen=True)
@@ -69,6 +82,17 @@ def _flag(env: Mapping[str, str], name: str) -> bool:
     if raw in _FALSE:
         return False
     raise ConfigError(f"{name} must be true or false, got {raw!r}")
+
+
+def load_limits(env: Mapping[str, str] | None = None) -> Limits:
+    """Read OCR_MAX_FILE_MB, OCR_MAX_PAGES and OCR_PAGE_TIMEOUT_SECONDS."""
+    env = os.environ if env is None else env
+    max_file_mb = _number(env, "OCR_MAX_FILE_MB", DEFAULT_MAX_FILE_MB, float)
+    return Limits(
+        max_file_bytes=int(max_file_mb * _MiB),
+        max_pages=_number(env, "OCR_MAX_PAGES", DEFAULT_MAX_PAGES, int),
+        page_timeout=_number(env, "OCR_PAGE_TIMEOUT_SECONDS", DEFAULT_PAGE_TIMEOUT, float),
+    )
 
 
 def load_vision_config(env: Mapping[str, str] | None = None) -> VisionConfig:

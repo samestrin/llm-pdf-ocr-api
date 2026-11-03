@@ -2,8 +2,10 @@
 
 A PDF that cannot be read, or a bad page range, is answered with 400 and
 `{"error": {"code": ..., "message": ...}}`, never a stack trace. So is a `model`
-outside the operator's list, and `method=vision` with no vision backend. A page
-that fails is reported in the result, and the other pages are still returned.
+outside the operator's list, and `method=vision` with no vision backend. A request
+over a limit (upload size, pages selected) is answered with 413 and the same body.
+A page that fails is reported in the result, and the other pages are still
+returned. The limits come from the environment (`llm_pdf_ocr.config.load_limits`).
 """
 
 from collections.abc import AsyncIterator
@@ -16,15 +18,23 @@ from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 
 from llm_pdf_ocr import __version__
-from llm_pdf_ocr.config import ModelNotAllowedError, VisionConfig, load_vision_config
+from llm_pdf_ocr.config import (
+    Limits,
+    ModelNotAllowedError,
+    VisionConfig,
+    load_limits,
+    load_vision_config,
+)
 from llm_pdf_ocr.extract import (
     MethodChoice,
     PageRangeError,
+    TooManyPagesError,
     VisionNotConfiguredError,
     extract_pdf,
     render_json,
     render_markdown,
 )
+from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
 from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError
 
 
@@ -46,6 +56,8 @@ app = FastAPI(
     version=__version__,
     description="Turn a PDF, scanned or not, into Markdown or JSON, page by page.",
 )
+app.state.limits = load_limits()
+app.add_middleware(UploadCap)
 
 
 class Format(StrEnum):
@@ -53,8 +65,10 @@ class Format(StrEnum):
     JSON = "json"
 
 
-def _error(code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"error": {"code": code, "message": message}})
+def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code, content={"error": {"code": code, "message": message}}
+    )
 
 
 @app.exception_handler(PdfReadError)
@@ -81,6 +95,16 @@ def _vision_not_configured(request: Request, exc: VisionNotConfiguredError) -> J
 Vision = Annotated[VisionConfig, Depends(get_vision_config)]
 
 
+@app.exception_handler(FileTooLargeError)
+@app.exception_handler(TooManyPagesError)
+def _over_a_limit(request: Request, exc: FileTooLargeError | TooManyPagesError) -> JSONResponse:
+    return _error(exc.code, str(exc), status_code=413)
+
+
+def _limits(request: Request) -> Limits:
+    return request.app.state.limits
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Report that the service is up."""
@@ -99,9 +123,11 @@ def health() -> dict[str, str]:
             "description": "The PDF cannot be read, the page range is bad, the model is not "
             "allowed, or `vision` was asked for and no vision model is configured."
         },
+        413: {"description": "The file is too large, or too many pages are selected."},
     },
 )
 def extract(
+    request: Request,
     file: Annotated[UploadFile, File(description="The PDF.")],
     format: Annotated[Format, Form(description="`markdown` or `json`.")] = Format.MARKDOWN,
     pages: Annotated[
@@ -123,7 +149,16 @@ def extract(
     vision: Vision,
 ) -> Response:
     """Extract a PDF's text page by page: from the text layer, a vision model or Tesseract."""
-    doc = extract_pdf(file.file.read(), pages=pages, method=method, model=model, vision=vision)
+    limits = _limits(request)
+    doc = extract_pdf(
+        read_upload(file.file, limits.max_file_bytes),
+        pages=pages,
+        method=method,
+        model=model,
+        vision=vision,
+        max_pages=limits.max_pages,
+        page_timeout=limits.page_timeout,
+    )
     if format is Format.JSON:
         return Response(render_json(doc), media_type="application/json")
     return Response(render_markdown(doc), media_type="text/markdown; charset=utf-8")
@@ -131,7 +166,10 @@ def extract(
 
 @app.post("/ocr", deprecated=True)
 def ocr(
-    file: Annotated[UploadFile, File(description="The PDF.")], response: Response, vision: Vision
+    request: Request,
+    file: Annotated[UploadFile, File(description="The PDF.")],
+    response: Response,
+    vision: Vision,
 ) -> dict:
     """Deprecated alias kept for 0.0.1: the whole PDF's text as `{"text": ...}`.
 
@@ -139,7 +177,13 @@ def ocr(
     The 0.0.1 `model` and image fields are ignored; nothing is downloaded.
     Pages are routed as `method=auto` on `/v1/extract`.
     """
-    doc = extract_pdf(file.file.read(), vision=vision)
+    limits = _limits(request)
+    doc = extract_pdf(
+        read_upload(file.file, limits.max_file_bytes),
+        vision=vision,
+        max_pages=limits.max_pages,
+        page_timeout=limits.page_timeout,
+    )
     response.headers["Deprecation"] = "true"
     return {
         "text": "\n\n".join(p.text for p in doc.pages if p.status == "ok"),

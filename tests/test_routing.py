@@ -39,7 +39,7 @@ def calls(monkeypatch):
     """Fake Tesseract and vision model; record which pages each one read."""
     seen = {"tesseract": [], "vision": []}
 
-    def ocr(page, language="eng"):
+    def ocr(page, language="eng", timeout=None):
         seen["tesseract"].append(page.number + 1)
         return OcrResult(number=page.number + 1, text="ocr text", confidence=0.9)
 
