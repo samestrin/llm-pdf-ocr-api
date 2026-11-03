@@ -267,7 +267,8 @@ def test_a_model_field_downloads_and_loads_nothing(monkeypatch, tmp_path, route)
 
     response = post(route, model="some/other-model")
 
-    assert response.status_code == 200
+    # /ocr ignores the 0.0.1 field; /v1/extract refuses a model off the operator's list.
+    assert response.status_code == (200 if route == "/ocr" else 400)
     assert not any(name.split(".")[0] in MODEL_LIBRARIES for name in sys.modules)
     assert list(tmp_path.iterdir()) == []
 
