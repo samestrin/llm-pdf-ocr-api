@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 import time
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pymupdf
@@ -37,12 +38,18 @@ class FakeServer:
                     fake.peak = max(fake.peak, fake.active)
                 try:
                     time.sleep(fake.delay)
-                    status, payload = fake.reply(body)
+                    status, payload, *extra = fake.reply(body)
                 finally:
                     with fake._lock:
                         fake.active -= 1
                 raw = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+                if status is None:  # Write raw bytes, not an HTTP response.
+                    self.wfile.write(raw)
+                    self.close_connection = True
+                    return
                 self.send_response(status)
+                for name, value in (extra[0] if extra else {}).items():
+                    self.send_header(name, value)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(raw)))
                 self.end_headers()
@@ -53,7 +60,9 @@ class FakeServer:
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.base_url = f"http://127.0.0.1:{self.httpd.server_port}/v1"
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread = threading.Thread(
+            target=self.httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+        )
 
     def config(self, **overrides) -> VisionConfig:
         settings = dict(
@@ -182,9 +191,7 @@ def test_returns_text_model_and_usage(server):
 
     result = read_page(text_page(), server.config())
 
-    assert result == VisionResult(
-        number=1, text="| a | b |\n|---|---|", model=MODEL, usage=usage
-    )
+    assert result == VisionResult(number=1, text="| a | b |\n|---|---|", model=MODEL, usage=usage)
 
 
 def test_usage_is_none_when_the_endpoint_gives_none(server):
@@ -254,8 +261,9 @@ def test_endpoint_failures_raise_sanitized_errors(server, status, payload, code)
         assert info.value.status == status
     assert_no_secrets(str(info.value), server)
     assert_no_secrets(repr(info.value), server)
+    # The original exception names the URL, so it must not be chained.
     assert info.value.__cause__ is None
-    assert info.value.__suppress_context__
+    assert info.value.__context__ is None or info.value.__suppress_context__
 
 
 def test_timeout_raises_a_sanitized_error(server):
@@ -278,6 +286,45 @@ def test_unreachable_endpoint_raises_a_sanitized_error(server):
 
     assert info.value.code == "unreachable"
     assert_no_secrets(str(info.value), server)
+
+
+@pytest.mark.parametrize(
+    ("raw", "code"),
+    [(b"", "unreachable"), (b"NOT HTTP AT ALL\r\n\r\n", "bad_response")],
+)
+def test_a_broken_connection_raises_a_sanitized_error(server, raw, code):
+    server.reply = lambda body: (None, raw)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config())
+
+    assert info.value.code == code
+    assert_no_secrets(str(info.value), server)
+
+
+def test_a_connect_timeout_raises_a_sanitized_error(server, monkeypatch):
+    def urlopen(*args, **kwargs):
+        raise urllib.error.URLError(TimeoutError(f"timed out {server.base_url}"))
+
+    monkeypatch.setattr(vision._opener, "open", urlopen)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config())
+
+    assert info.value.code == "timeout"
+    assert_no_secrets(str(info.value), server)
+
+
+def test_a_redirect_is_refused_so_the_key_never_leaves_the_endpoint(server):
+    other = f"http://127.0.0.1:{server.httpd.server_port}/elsewhere"
+    server.reply = lambda body: (302, {}, {"Location": other})
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config())
+
+    assert info.value.code == "http_error"
+    assert info.value.status == 302
+    assert [path for path, _, _ in server.requests] == ["/v1/chat/completions"]
 
 
 def test_log_lines_never_contain_the_key_or_base_url(server, caplog):
@@ -323,8 +370,7 @@ def test_concurrency_limit_holds_across_separate_calls(server):
     data = pdf_bytes(4)
 
     callers = [
-        threading.Thread(target=read_pdf_pages, args=(data, [1, 2, 3, 4], config))
-        for _ in range(3)
+        threading.Thread(target=read_pdf_pages, args=(data, [1, 2, 3, 4], config)) for _ in range(3)
     ]
     for caller in callers:
         caller.start()
@@ -345,6 +391,20 @@ def test_a_failed_page_does_not_stop_the_others(server):
 
     assert [type(r) for r in results] == [VisionResult, VisionError, VisionResult]
     assert results[1].number == 2
+
+
+def test_reading_pages_needs_a_configured_backend():
+    with pytest.raises(VisionError) as info:
+        read_pdf_pages(pdf_bytes(1), [1], VisionConfig())
+
+    assert info.value.code == "not_configured"
+
+
+def test_reading_pages_refuses_a_model_outside_the_list(server):
+    with pytest.raises(ModelNotAllowedError):
+        read_pdf_pages(pdf_bytes(1), [1], server.config(), model="not-listed")
+
+    assert server.requests == []
 
 
 def test_a_page_outside_the_pdf_is_refused(server):
