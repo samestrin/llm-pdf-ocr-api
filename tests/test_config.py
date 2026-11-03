@@ -98,3 +98,12 @@ def test_resolve_model_when_off_is_rejected():
     assert isinstance(load_vision_config({}), VisionConfig)
     with pytest.raises(ModelNotAllowedError):
         load_vision_config({}).resolve_model("x")
+
+
+def test_other_settings_without_base_url_stay_off():
+    config = load_vision_config({**FULL, "OCR_LLM_BASE_URL": ""})
+    assert config.enabled is False
+    assert config.default_model is None
+    assert config.allowed_models == ()
+    with pytest.raises(ModelNotAllowedError):
+        config.resolve_model("vision-b")
