@@ -29,6 +29,10 @@ class TesseractNotFoundError(OcrError):
     """The `tesseract` command is not installed."""
 
 
+class OcrTimeoutError(OcrError):
+    """Tesseract took longer than the per-page timeout."""
+
+
 @dataclass(frozen=True)
 class OcrResult:
     """The recognised text of one page.
@@ -41,10 +45,12 @@ class OcrResult:
     confidence: float
 
 
-def ocr_page(page: pymupdf.Page, language: str = DEFAULT_LANGUAGE) -> OcrResult:
-    """Render a page at OCR_DPI and recognise its text."""
+def ocr_page(
+    page: pymupdf.Page, language: str = DEFAULT_LANGUAGE, timeout: float = TIMEOUT_SECONDS
+) -> OcrResult:
+    """Render a page at OCR_DPI and recognise its text, giving Tesseract `timeout` seconds."""
     png = page.get_pixmap(dpi=OCR_DPI, colorspace=pymupdf.csGRAY).tobytes("png")
-    text, confidence = _parse_tsv(_run_tesseract(png, language))
+    text, confidence = _parse_tsv(_run_tesseract(png, language, timeout))
     return OcrResult(number=page.number + 1, text=text, confidence=confidence)
 
 
@@ -59,14 +65,14 @@ def ocr_pdf_pages(
         return [ocr_page(doc[number - 1], language) for number in numbers]
 
 
-def _run_tesseract(png: bytes, language: str) -> str:
+def _run_tesseract(png: bytes, language: str, timeout: float) -> str:
     cmd = ["tesseract", "stdin", "stdout", "-l", language, "tsv"]
     try:
-        proc = subprocess.run(cmd, input=png, capture_output=True, timeout=TIMEOUT_SECONDS)
+        proc = subprocess.run(cmd, input=png, capture_output=True, timeout=timeout)
     except FileNotFoundError as exc:
         raise TesseractNotFoundError("tesseract is not installed") from exc
     except subprocess.TimeoutExpired as exc:
-        raise OcrError(f"tesseract timed out after {TIMEOUT_SECONDS} seconds") from exc
+        raise OcrTimeoutError(f"tesseract timed out after {timeout:g} seconds") from exc
     if proc.returncode != 0:
         raise OcrError(proc.stderr.decode("utf-8", "replace").strip() or "tesseract failed")
     return proc.stdout.decode("utf-8", "replace")

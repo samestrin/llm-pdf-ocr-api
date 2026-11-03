@@ -211,3 +211,20 @@ def test_unreadable_pdf_raises_the_pdf_error():
 
     with pytest.raises(InvalidPdfError):
         ocr_pdf_pages(b"nope", [1])
+
+
+def test_tesseract_timeout_has_its_own_error_and_uses_the_given_limit(monkeypatch):
+    from llm_pdf_ocr.ocr import OcrTimeoutError
+
+    seen = []
+
+    def run(cmd, **kwargs):
+        seen.append(kwargs["timeout"])
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(ocr.subprocess, "run", run)
+
+    with pytest.raises(OcrTimeoutError, match="timed out after 3 seconds"):
+        ocr_page(blank_page(), timeout=3)
+    assert seen == [3]
+    assert issubclass(OcrTimeoutError, OcrError)

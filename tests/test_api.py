@@ -24,7 +24,7 @@ client = TestClient(app)
 
 
 def fake_ocr(monkeypatch, text="ocr text", fail_on=()):
-    def run(page, language="eng"):
+    def run(page, language="eng", timeout=None):
         if page.number + 1 in fail_on:
             raise OcrError("tesseract blew up")
         return OcrResult(number=page.number + 1, text=text, confidence=0.9)
