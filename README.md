@@ -89,6 +89,8 @@ curl -F file=@document.pdf -F format=json -F pages=1-2 localhost:5000/v1/extract
 
 A page that could not be read is returned as `failed`, with an error code and message, and is listed in `failed_pages`; the other pages are still returned.
 
+To read scanned pages with a vision model, local or in the cloud, see [Vision model backend](docs/vision-backend.md). With none configured, scanned pages are read with Tesseract.
+
 ### OCR (deprecated)
 
 **Endpoint:** `/ocr` **Method:** POST
