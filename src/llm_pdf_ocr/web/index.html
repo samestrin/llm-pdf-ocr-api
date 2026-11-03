@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>llm-pdf-ocr-api</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>PDF to text</h1>
+      <p>Markdown or JSON, page by page. The file is read by this service only.</p>
+    </header>
+
+    <form id="extract">
+      <label id="drop" class="drop" for="file">
+        <input id="file" name="file" type="file" accept="application/pdf,.pdf" required>
+        <span id="drop-text">Drop a PDF here, or click to pick one</span>
+      </label>
+
+      <div class="options">
+        <label>Output
+          <select id="format" name="format">
+            <option value="markdown" selected>Markdown</option>
+            <option value="json">JSON</option>
+          </select>
+        </label>
+
+        <label>Method
+          <select id="method" name="method">
+            <option value="auto" selected>Auto</option>
+            <option value="text_layer">Text layer</option>
+            <option value="tesseract">Tesseract</option>
+            <option value="vision" disabled hidden>Vision model</option>
+          </select>
+        </label>
+
+        <label id="model-field" hidden>Model
+          <select id="model" name="model"></select>
+        </label>
+      </div>
+
+      <button id="submit" type="submit">Extract</button>
+    </form>
+
+    <section id="output" aria-live="polite">
+      <p id="status"></p>
+      <pre id="result" hidden></pre>
+    </section>
+  </main>
+</body>
+</html>

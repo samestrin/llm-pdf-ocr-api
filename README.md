@@ -27,7 +27,7 @@ docker build -t llm-pdf-ocr-api .
 docker run -d --name api -p 5000:5000 llm-pdf-ocr-api
 ```
 
-Then send it a PDF:
+Then open <http://localhost:5000/> to drop in a PDF from the browser, or send it one:
 
 ```bash
 curl -F file=@document.pdf localhost:5000/v1/extract
@@ -121,6 +121,18 @@ curl localhost:5000/v1/jobs/<id>
 ```
 
 Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+
+### Web page
+
+**Endpoint:** `/` **Method:** GET
+
+A page to use the service from a browser: drop or pick a PDF, choose Markdown or JSON and a method, and read the result. It is plain HTML, CSS and JavaScript shipped inside the package (no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network.
+
+### Capabilities
+
+**Endpoint:** `/v1/capabilities` **Method:** GET
+
+Returns the methods a request may use and the vision models it may pick, for example `{"methods": ["auto", "text_layer", "tesseract"], "models": []}`. `vision` and the `OCR_LLM_ALLOWED_MODELS` names appear only when a vision model is configured. The endpoint URL and key are never returned.
 
 ### OCR (deprecated)
 

@@ -1,0 +1,104 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --fg: #1d1d1f;
+  --muted: #6b6b70;
+  --card: #ffffff;
+  --line: #d8d8dc;
+  --accent: #2f6fde;
+  --error: #c62828;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161618;
+    --fg: #ececf0;
+    --muted: #9a9aa2;
+    --card: #222226;
+    --line: #3a3a40;
+    --accent: #6b9cff;
+    --error: #ff6b6b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+main {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
+header p { margin: 0 0 1.5rem; color: var(--muted); }
+
+form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+}
+
+.drop {
+  display: grid;
+  place-items: center;
+  min-height: 9rem;
+  padding: 1rem;
+  border: 2px dashed var(--line);
+  border-radius: 0.5rem;
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.drop.over, .drop:focus-within { border-color: var(--accent); color: var(--fg); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.options { display: flex; flex-wrap: wrap; gap: 1rem; }
+.options label { display: grid; gap: 0.25rem; font-size: 0.9rem; color: var(--muted); }
+
+select, button {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  justify-self: start;
+  padding: 0.5rem 1.25rem;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.6; cursor: progress; }
+
+[hidden] { display: none !important; }
+
+#output { margin-top: 1.5rem; }
+#status { color: var(--muted); }
+#status.error { color: var(--error); }
+
+pre {
+  overflow-x: auto;
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
