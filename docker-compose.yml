@@ -1,0 +1,36 @@
+# Text-layer and Tesseract extraction work out of the box:
+#   docker compose up
+#
+# To also read pages with a local vision model, start the optional "vision" profile
+# (an Ollama server), pull a model once, and point the API at it:
+#   docker compose --profile vision up -d
+#   docker compose exec ollama ollama pull qwen2.5vl:7b
+# Then set OCR_LLM_BASE_URL (see below) before starting, for example in a .env file.
+services:
+  api:
+    build: .
+    image: llm-pdf-ocr-api:local
+    ports:
+      - "5000:5000"
+    environment:
+      # The vision backend is off while OCR_LLM_BASE_URL is empty.
+      # With the vision profile: OCR_LLM_BASE_URL=http://ollama:11434/v1
+      OCR_LLM_BASE_URL: ${OCR_LLM_BASE_URL:-}
+      OCR_LLM_DEFAULT_MODEL: ${OCR_LLM_DEFAULT_MODEL:-qwen2.5vl:7b}
+      OCR_LLM_ALLOWED_MODELS: ${OCR_LLM_ALLOWED_MODELS:-}
+      OCR_LLM_API_KEY: ${OCR_LLM_API_KEY:-}
+      OCR_LLM_TIMEOUT_SECONDS: ${OCR_LLM_TIMEOUT_SECONDS:-60}
+      OCR_LLM_CONCURRENCY: ${OCR_LLM_CONCURRENCY:-2}
+      OCR_LLM_FALLBACK_TO_TESSERACT: ${OCR_LLM_FALLBACK_TO_TESSERACT:-true}
+    restart: unless-stopped
+
+  # Optional local vision endpoint (OpenAI-compatible API at /v1). Not started by default.
+  ollama:
+    profiles: ["vision"]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama:
