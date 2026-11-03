@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Removed
+
+- The 2024 DigitalOcean app template (`.do/`), which cloned a different repository.
+
 ### Changed
 
 - The project is now a `uv`-managed Python package (`pyproject.toml`, `src/llm_pdf_ocr/`) served by FastAPI. Install with `uv sync`; `src/requirements.txt` is gone. The Docker image runs `uvicorn llm_pdf_ocr.app:app` on port 5000.
@@ -11,6 +15,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ### Added
 
+- `docker-compose.yml` runs the API, with an optional `vision` profile that adds a local Ollama vision endpoint. CI validates the file.
 - Docker image installs Tesseract with English data, runs as a non-root user and has a healthcheck on `/health`. CI starts the container and extracts all three fixtures through `POST /v1/extract`.
 
 - OCR fallback (`llm_pdf_ocr.ocr`): pages without a usable text layer are rendered at 300 DPI and read with the `tesseract` command, returning text and a 0 to 1 confidence. Tesseract must be installed.

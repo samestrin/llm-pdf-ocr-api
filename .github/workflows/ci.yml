@@ -30,6 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Compose file validates, with and without the vision profile
+        run: |
+          docker compose config -q
+          docker compose --profile vision config -q
       - run: docker build -t llm-pdf-ocr-api:ci .
       - name: Start the container
         run: |
