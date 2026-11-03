@@ -12,6 +12,11 @@ and answers 202 with a job id; `GET /v1/jobs/{id}` gives the progress per page a
 the result when done. Jobs live in this process's memory (`llm_pdf_ocr.jobs`), so
 the service runs a single uvicorn worker. Over `OCR_MAX_JOBS` held jobs, `POST`
 answers 429; a job finished more than `OCR_JOB_TTL_SECONDS` ago is gone (404).
+
+`GET /` is a page for using the service from a browser (files in `llm_pdf_ocr/web/`,
+served with `Content-Security-Policy: default-src 'self'`, so it loads nothing from
+another origin). `GET /v1/capabilities` tells it which methods and vision model names
+it may offer; never the backend's URL or key.
 """
 
 import json
@@ -19,11 +24,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
 from functools import cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from llm_pdf_ocr import __version__
@@ -76,6 +83,10 @@ _job_settings = load_job_settings()
 app.state.jobs = JobStore(max_jobs=_job_settings.max_jobs, ttl=_job_settings.ttl)
 app.add_middleware(UploadCap)
 app.add_middleware(RequestLog)  # added last, so it is outermost
+
+WEB = Path(__file__).parent / "web"
+PAGE_CSP = "default-src 'self'"
+app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 
 class Format(StrEnum):
@@ -166,6 +177,25 @@ ModelField = Annotated[
 def health() -> dict[str, str]:
     """Report that the service is up."""
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def page() -> FileResponse:
+    """The web page: pick a PDF, choose output and method, read the result."""
+    return FileResponse(WEB / "index.html", headers={"Content-Security-Policy": PAGE_CSP})
+
+
+@app.get("/v1/capabilities")
+def capabilities(vision: Vision) -> dict[str, list[str]]:
+    """The methods this service offers, and the vision model names a caller may pick.
+
+    `vision` is listed only when a vision model is configured. Nothing else about the
+    backend is given: no URL and no key.
+    """
+    methods = [MethodChoice.AUTO, MethodChoice.TEXT_LAYER, MethodChoice.TESSERACT]
+    if vision.enabled:
+        methods.append(MethodChoice.VISION)
+    return {"methods": [m.value for m in methods], "models": list(vision.allowed_models)}
 
 
 @app.post(

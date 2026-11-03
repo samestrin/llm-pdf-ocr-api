@@ -62,5 +62,31 @@ jobs:
           post born_digital | grep -q "Quarterly Report"
           post scanned | grep -qi "Scanned page text"
           post mixed | grep -qi "tesseract"
+      - name: Web page and its assets load with the network off and nothing configured
+        run: |
+          docker run -d --name offline --network none llm-pdf-ocr-api:ci
+          docker exec -i offline python - <<'EOF'
+          import re, time, urllib.request as u
+          base = "http://127.0.0.1:5000"
+          for _ in range(30):
+              try:
+                  page = u.urlopen(base + "/", timeout=2)
+                  break
+              except OSError:
+                  time.sleep(1)
+          else:
+              raise SystemExit("page did not load")
+          assert page.headers["Content-Security-Policy"] == "default-src 'self'"
+          html = page.read().decode()
+          assets = re.findall(r'(?:src|href)="([^"]+)"', html)
+          assert assets, html
+          for asset in assets:
+              assert u.urlopen(base + asset, timeout=2).status == 200, asset
+          caps = u.urlopen(base + "/v1/capabilities", timeout=2).read().decode()
+          assert '"vision"' not in caps, caps
+          print("page and", len(assets), "assets loaded offline;", caps)
+          EOF
       - if: failure()
-        run: docker logs api
+        run: |
+          docker logs api
+          docker logs offline || true
