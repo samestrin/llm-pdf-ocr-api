@@ -15,6 +15,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ### Added
 
+- `benchmarks/`: twenty public-domain or freely licensed PDFs (born-digital, two-column, tables, forms, scans, poor scans) with reference text, Markdown reference tables, and a manifest of sources and licenses. A test checks every file has a source URL, a license and reference text. `benchmarks` is excluded from the Docker build context.
 - `docker-compose.yml` runs the API, with an optional `vision` profile that adds a local Ollama vision endpoint. CI validates the file.
 - Docker image installs Tesseract with English data, runs as a non-root user and has a healthcheck on `/health`. CI starts the container and extracts all three fixtures through `POST /v1/extract`.
 

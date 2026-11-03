@@ -1,0 +1,25 @@
+Table 3: Comparison of Mixtral with Llama 2 70B and GPT-3.5. Mixtral outperforms or matches Llama 2
+70B and GPT-3.5 performance on most metrics.
+Evaluation Differences. On some benchmarks, there are some differences between our evaluation
+protocol and the one reported in the Llama 2 paper: 1) on MBPP, we use the hand-verified subset 2)
+on TriviaQA, we do not provide Wikipedia contexts.
+3.1
+Multilingual benchmarks
+Compared to Mistral 7B, we significantly upsample the proportion of multilingual data during
+pretraining. The extra capacity allows Mixtral to perform well on multilingual benchmarks while
+maintaining a high accuracy in English. In particular, Mixtral significantly outperforms Llama 2 70B
+in French, German, Spanish, and Italian, as shown in Table 4.
+Table 4: Comparison of Mixtral with Llama on Multilingual Benchmarks. On ARC Challenge, Hellaswag,
+and MMLU, Mixtral outperforms Llama 2 70B on 4 languages: French, German, Spanish, and Italian.
+3.2
+Long range performance
+To assess the capabilities of Mixtral to tackle long context, we evaluate it on the passkey retrieval
+task introduced in [23], a synthetic task designed to measure the ability of the model to retrieve a
+passkey inserted randomly in a long prompt. Results in Figure 4 (Left) show that Mixtral achieves a
+100% retrieval accuracy regardless of the context length or the position of passkey in the sequence.
+Figure 4 (Right) shows that the perplexity of Mixtral on a subset of the proof-pile dataset [2] decreases
+monotonically as the size of the context increases.
+Figure 4: Long range performance of Mixtral. (Left) Mixtral has 100% retrieval accuracy of the Passkey task
+regardless of the location of the passkey and length of the input sequence. (Right) The perplexity of Mixtral on
+the proof-pile dataset decreases monotonically as the context length increases.
+5

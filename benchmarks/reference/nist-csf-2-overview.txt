@@ -1,0 +1,34 @@
+The NIST Cybersecurity Framework (CSF) 2.0
+i
+NIST CSWP 29
+February 26, 2024
+Abstract
+The NIST Cybersecurity Framework (CSF) 2.0 provides guidance to industry, government
+agencies, and other organizations to manage cybersecurity risks. It offers a taxonomy of high-
+level cybersecurity outcomes that can be used by any organization — regardless of its size,
+sector, or maturity — to better understand, assess, prioritize, and communicate its
+cybersecurity efforts. The CSF does not prescribe how outcomes should be achieved. Rather, it
+links to online resources that provide additional guidance on practices and controls that could
+be used to achieve those outcomes. This document describes CSF 2.0, its components, and
+some of the many ways that it can be used.
+Keywords
+cybersecurity; Cybersecurity Framework (CSF); cybersecurity risk governance; cybersecurity risk
+management; enterprise risk management; Profiles; Tiers.
+Audience
+Individuals responsible for developing and leading cybersecurity programs are the primary
+audience for the CSF. The CSF can also be used by others involved in managing risk — including
+executives, boards of directors, acquisition professionals, technology professionals, risk
+managers, lawyers, human resources specialists, and cybersecurity and risk management
+auditors — to guide their cybersecurity-related decisions. Additionally, the CSF can be useful to
+those making and influencing policy (e.g., associations, professional organizations, regulators)
+who set and communicate priorities for cybersecurity risk management.
+Supplemental Content
+NIST will continue to build and host additional resources to help organizations implement the
+CSF, including Quick Start Guides and Community Profiles. All resources are made publicly
+available on the NIST CSF website. Suggestions for additional resources to reference on the
+NIST CSF website can always be shared with NIST at cyberframework@nist.gov.
+Note to Readers
+Unless otherwise noted, documents cited, referenced, or excerpted in this publication are not
+wholly incorporated into this publication.
+Before version 2.0, the Cybersecurity Framework was called the “Framework for Improving
+Critical Infrastructure Cybersecurity.” This title is not used for CSF 2.0.

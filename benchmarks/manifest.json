@@ -1,0 +1,279 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "us-constitution-text",
+      "pdf": "pdfs/us-constitution-text.pdf",
+      "kind": "born-digital",
+      "source_url": "https://www.govinfo.gov/content/pkg/CDOC-110hdoc50/pdf/CDOC-110hdoc50.pdf",
+      "source_pages": [
+        11
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "US House of Representatives, Document 110-50: The Constitution of the United States",
+      "reference_text": "reference/us-constitution-text.txt"
+    },
+    {
+      "id": "nist-csf-2-overview",
+      "pdf": "pdfs/nist-csf-2-overview.pdf",
+      "kind": "born-digital",
+      "source_url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf",
+      "source_pages": [
+        2
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "NIST CSWP 29: The NIST Cybersecurity Framework (CSF) 2.0",
+      "reference_text": "reference/nist-csf-2-overview.txt"
+    },
+    {
+      "id": "nist-sp800-63-3-text",
+      "pdf": "pdfs/nist-sp800-63-3-text.pdf",
+      "kind": "born-digital",
+      "source_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63-3.pdf",
+      "source_pages": [
+        8
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "NIST SP 800-63-3: Digital Identity Guidelines",
+      "reference_text": "reference/nist-sp800-63-3-text.txt"
+    },
+    {
+      "id": "cot-paper-first-page",
+      "pdf": "pdfs/cot-paper-first-page.pdf",
+      "kind": "born-digital",
+      "source_url": "https://arxiv.org/pdf/2201.11903",
+      "source_pages": [
+        1
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Wei et al.: Chain-of-Thought Prompting Elicits Reasoning in Large Language Models (arXiv:2201.11903), CC BY 4.0",
+      "reference_text": "reference/cot-paper-first-page.txt"
+    },
+    {
+      "id": "llama-two-column",
+      "pdf": "pdfs/llama-two-column.pdf",
+      "kind": "two-column",
+      "source_url": "https://arxiv.org/pdf/2302.13971",
+      "source_pages": [
+        1,
+        2
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Touvron et al.: LLaMA: Open and Efficient Foundation Language Models (arXiv:2302.13971), CC BY 4.0",
+      "reference_text": "reference/llama-two-column.txt"
+    },
+    {
+      "id": "vllm-two-column",
+      "pdf": "pdfs/vllm-two-column.pdf",
+      "kind": "two-column",
+      "source_url": "https://arxiv.org/pdf/2309.06180",
+      "source_pages": [
+        1,
+        2
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Kwon et al.: Efficient Memory Management for Large Language Model Serving with PagedAttention (arXiv:2309.06180), CC BY 4.0",
+      "reference_text": "reference/vllm-two-column.txt"
+    },
+    {
+      "id": "llava-two-column",
+      "pdf": "pdfs/llava-two-column.pdf",
+      "kind": "two-column",
+      "source_url": "https://arxiv.org/pdf/2310.03744",
+      "source_pages": [
+        1,
+        2
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Liu et al.: Improved Baselines with Visual Instruction Tuning (arXiv:2310.03744), CC BY 4.0",
+      "reference_text": "reference/llava-two-column.txt"
+    },
+    {
+      "id": "mixtral-tables-p4",
+      "pdf": "pdfs/mixtral-tables-p4.pdf",
+      "kind": "tables",
+      "source_url": "https://arxiv.org/pdf/2401.04088",
+      "source_pages": [
+        4
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Jiang et al.: Mixtral of Experts (arXiv:2401.04088), CC BY 4.0",
+      "reference_text": "reference/mixtral-tables-p4.txt",
+      "reference_tables": "reference/mixtral-tables-p4.tables.md"
+    },
+    {
+      "id": "mixtral-tables-p5",
+      "pdf": "pdfs/mixtral-tables-p5.pdf",
+      "kind": "tables",
+      "source_url": "https://arxiv.org/pdf/2401.04088",
+      "source_pages": [
+        5
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Jiang et al.: Mixtral of Experts (arXiv:2401.04088), CC BY 4.0",
+      "reference_text": "reference/mixtral-tables-p5.txt",
+      "reference_tables": "reference/mixtral-tables-p5.tables.md"
+    },
+    {
+      "id": "mistral-guardrails-p5",
+      "pdf": "pdfs/mistral-guardrails-p5.pdf",
+      "kind": "tables",
+      "source_url": "https://arxiv.org/pdf/2310.06825",
+      "source_pages": [
+        5
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Jiang et al.: Mistral 7B (arXiv:2310.06825), CC BY 4.0",
+      "reference_text": "reference/mistral-guardrails-p5.txt",
+      "reference_tables": "reference/mistral-guardrails-p5.tables.md"
+    },
+    {
+      "id": "irs-w9-form",
+      "pdf": "pdfs/irs-w9-form.pdf",
+      "kind": "form",
+      "source_url": "https://www.irs.gov/pub/irs-pdf/fw9.pdf",
+      "source_pages": [
+        1
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "IRS Form W-9",
+      "reference_text": "reference/irs-w9-form.txt"
+    },
+    {
+      "id": "irs-1040-form",
+      "pdf": "pdfs/irs-1040-form.pdf",
+      "kind": "form",
+      "source_url": "https://www.irs.gov/pub/irs-pdf/f1040.pdf",
+      "source_pages": [
+        1
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "IRS Form 1040",
+      "reference_text": "reference/irs-1040-form.txt"
+    },
+    {
+      "id": "irs-w4-form",
+      "pdf": "pdfs/irs-w4-form.pdf",
+      "kind": "form",
+      "source_url": "https://www.irs.gov/pub/irs-pdf/fw4.pdf",
+      "source_pages": [
+        1
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "IRS Form W-4",
+      "reference_text": "reference/irs-w4-form.txt"
+    },
+    {
+      "id": "us-constitution-scan",
+      "pdf": "pdfs/us-constitution-scan.pdf",
+      "kind": "scanned",
+      "source_url": "https://www.govinfo.gov/content/pkg/CDOC-110hdoc50/pdf/CDOC-110hdoc50.pdf",
+      "source_pages": [
+        12
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "US House of Representatives, Document 110-50: The Constitution of the United States",
+      "reference_text": "reference/us-constitution-scan.txt",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    },
+    {
+      "id": "nist-csf-2-scan",
+      "pdf": "pdfs/nist-csf-2-scan.pdf",
+      "kind": "scanned",
+      "source_url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf",
+      "source_pages": [
+        4
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "NIST CSWP 29: The NIST Cybersecurity Framework (CSF) 2.0",
+      "reference_text": "reference/nist-csf-2-scan.txt",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    },
+    {
+      "id": "llama-first-page-scan",
+      "pdf": "pdfs/llama-first-page-scan.pdf",
+      "kind": "scanned",
+      "source_url": "https://arxiv.org/pdf/2302.13971",
+      "source_pages": [
+        1
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Touvron et al.: LLaMA: Open and Efficient Foundation Language Models (arXiv:2302.13971), CC BY 4.0",
+      "reference_text": "reference/llama-first-page-scan.txt",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    },
+    {
+      "id": "sp800-63-3-poor-scan",
+      "pdf": "pdfs/sp800-63-3-poor-scan.pdf",
+      "kind": "poor-scan",
+      "source_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63-3.pdf",
+      "source_pages": [
+        9
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "NIST SP 800-63-3: Digital Identity Guidelines",
+      "reference_text": "reference/sp800-63-3-poor-scan.txt",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    },
+    {
+      "id": "irs-w9-poor-scan",
+      "pdf": "pdfs/irs-w9-poor-scan.pdf",
+      "kind": "poor-scan",
+      "source_url": "https://www.irs.gov/pub/irs-pdf/fw9.pdf",
+      "source_pages": [
+        1
+      ],
+      "license": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "license_url": "https://www.law.cornell.edu/uscode/text/17/105",
+      "attribution": "IRS Form W-9",
+      "reference_text": "reference/irs-w9-poor-scan.txt",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    },
+    {
+      "id": "cot-poor-scan",
+      "pdf": "pdfs/cot-poor-scan.pdf",
+      "kind": "poor-scan",
+      "source_url": "https://arxiv.org/pdf/2201.11903",
+      "source_pages": [
+        1
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Wei et al.: Chain-of-Thought Prompting Elicits Reasoning in Large Language Models (arXiv:2201.11903), CC BY 4.0",
+      "reference_text": "reference/cot-poor-scan.txt",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    },
+    {
+      "id": "mixtral-tables-p5-poor-scan",
+      "pdf": "pdfs/mixtral-tables-p5-poor-scan.pdf",
+      "kind": "poor-scan",
+      "source_url": "https://arxiv.org/pdf/2401.04088",
+      "source_pages": [
+        5
+      ],
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Jiang et al.: Mixtral of Experts (arXiv:2401.04088), CC BY 4.0",
+      "reference_text": "reference/mixtral-tables-p5-poor-scan.txt",
+      "reference_tables": "reference/mixtral-tables-p5-poor-scan.tables.md",
+      "derived": "page(s) rasterised from the source into an image-only PDF; no text layer"
+    }
+  ]
+}
