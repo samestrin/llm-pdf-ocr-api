@@ -159,6 +159,14 @@ def test_entries_without_reference_tables_have_no_table_score():
 # Methods
 
 
+def test_tesseract_version_is_none_when_it_is_not_installed(monkeypatch):
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("tesseract")
+
+    monkeypatch.setattr(run.subprocess, "run", missing)
+    assert run.tesseract_version() is None
+
+
 def test_vision_runs_only_when_a_base_url_is_set():
     assert run.available_methods(VisionConfig(), tesseract=True) == ["text_layer", "tesseract"]
     configured = VisionConfig(base_url="http://x/v1", default_model="m", allowed_models=("m",))
@@ -219,7 +227,8 @@ def test_one_command_writes_a_dated_table_for_text_layer_and_tesseract(
     # Text layer fails on the scan; Tesseract reads both.
     assert rows["text_layer"].rstrip(" |").endswith("1")
     assert rows["tesseract"].rstrip(" |").endswith("0")
-    assert "Vision model: not measured" in text
+    assert "Vision model: not measured." in text
+    assert "Tesseract: tesseract " in text
     assert json.loads((tmp_path / "2026-11-03.json").read_text())["date"] == "2026-11-03"
 
 
