@@ -16,6 +16,8 @@ All notable changes to this project are recorded here. Add new entries under Unr
 - Per-page output (`llm_pdf_ocr.extract`): `extract_pdf` reads each page from the text layer or Tesseract, and `render_markdown` / `render_json` state the method of every page. A page that fails is reported as `failed` with an error code and message, never as an empty page; the other pages are still returned.
 - `POST /v1/extract`: upload a PDF and get Markdown or JSON back (`format=markdown|json`), optionally for a page range (`pages=1-3,5`). A bad, encrypted or page-less PDF and a bad page range return 400 with an error code and no stack trace. OpenAPI docs are at `/docs`.
 
+- Vision backend settings (`llm_pdf_ocr.config`), read from `OCR_LLM_BASE_URL`, `OCR_LLM_API_KEY`, `OCR_LLM_DEFAULT_MODEL`, `OCR_LLM_ALLOWED_MODELS` (comma list), `OCR_LLM_TIMEOUT_SECONDS`, `OCR_LLM_CONCURRENCY` and `OCR_LLM_FALLBACK_TO_TESSERACT`. The backend is off unless the base URL is set; a model outside the allowed list is refused; the Tesseract fallback for a failed page is off by default. Nothing calls a model yet.
+
 ### Security
 
 - No request field can cause a model to be downloaded or loaded: `model` and the other 0.0.1 form fields are ignored by `/ocr` and `/v1/extract`, and a test blocks the network to prove it.
