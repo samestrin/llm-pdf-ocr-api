@@ -81,9 +81,9 @@ def test_unhandled_error_is_500_with_the_request_id(monkeypatch):
 
 def test_a_413_from_the_upload_cap_has_the_request_id():
     saved = app.state.limits
-    app.state.limits = replace(saved, max_file_bytes=10)
+    app.state.limits = replace(saved, max_file_bytes=1024 * 1024)
     try:
-        response = post()
+        response = post(content=b"%PDF-1.7\n" + b"x" * (3 * 1024 * 1024))
     finally:
         app.state.limits = saved
     assert response.status_code == 413
