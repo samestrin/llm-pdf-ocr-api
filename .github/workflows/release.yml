@@ -1,0 +1,72 @@
+name: Release
+
+# A v* tag publishes ghcr.io/samestrin/llm-pdf-ocr-api tagged X.Y.Z and latest.
+# A pull request touching this workflow runs the same build as a dry run: nothing is pushed.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/scripts/check-tag-version.sh
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/samestrin/llm-pdf-ocr-api
+
+jobs:
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag guard accepts the pyproject.toml version
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          .github/scripts/check-tag-version.sh "v$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Tag guard fails on a mismatched tag
+        run: |
+          if .github/scripts/check-tag-version.sh v0.0.0-mismatch; then
+            echo "::error::the tag guard accepted a mismatched tag"; exit 1
+          fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the image (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag must equal the pyproject.toml version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          .github/scripts/check-tag-version.sh "$TAG"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push X.Y.Z and latest
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
