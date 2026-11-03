@@ -9,7 +9,7 @@ from test_vision import MODEL, completion, server  # noqa: F401  (server is a fi
 
 from llm_pdf_ocr import extract, vision
 from llm_pdf_ocr.app import app, get_vision_config
-from llm_pdf_ocr.config import ModelNotAllowedError, VisionConfig
+from llm_pdf_ocr.config import ConfigError, ModelNotAllowedError, VisionConfig
 from llm_pdf_ocr.extract import (
     ErrorCode,
     Method,
@@ -206,15 +206,7 @@ client = TestClient(app)
 @pytest.fixture
 def backend(server):  # noqa: F811
     app.dependency_overrides[get_vision_config] = lambda: server.config()
-    yield server
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def no_backend(calls):
-    app.dependency_overrides[get_vision_config] = lambda: OFF
-    yield calls
-    app.dependency_overrides.clear()
+    return server
 
 
 def post(route="/v1/extract", **form):
@@ -253,14 +245,14 @@ def test_api_refuses_a_model_outside_the_list(backend, method):
     assert backend.requests == []
 
 
-def test_api_refuses_any_model_when_no_backend_is_configured(no_backend):
+def test_api_refuses_any_model_when_no_backend_is_configured(calls):
     response = post(model="vision-small")
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "model_not_allowed"
 
 
-def test_api_refuses_forced_vision_without_a_backend(no_backend):
+def test_api_refuses_forced_vision_without_a_backend(calls):
     response = post(method="vision")
 
     assert response.status_code == 400
@@ -294,8 +286,32 @@ def test_deprecated_ocr_uses_the_configured_model_too(backend):
 def test_the_vision_config_is_read_from_the_environment(monkeypatch):
     get_vision_config.cache_clear()
     monkeypatch.setenv("OCR_LLM_BASE_URL", "http://vision.invalid/v1")
+    monkeypatch.delenv("OCR_LLM_ALLOWED_MODELS", raising=False)
     monkeypatch.setenv("OCR_LLM_DEFAULT_MODEL", "m")
     try:
         assert get_vision_config().default_model == "m"
+    finally:
+        get_vision_config.cache_clear()
+
+
+def test_an_unexpected_vision_exception_fails_only_that_page(monkeypatch, calls):
+    def read(png, number, config, model=None):
+        raise RuntimeError("http://vision.invalid/v1 key=sk-secret")
+
+    monkeypatch.setattr(vision, "read_image", read)
+
+    (page,) = extract_pdf(MIXED, pages=SCAN, vision=CONFIG).pages
+
+    assert page.error.code == ErrorCode.VISION_FAILED
+    assert "secret" not in page.error.message and "invalid" not in page.error.message
+
+
+def test_a_bad_vision_setting_stops_the_service_at_start(monkeypatch):
+    get_vision_config.cache_clear()
+    monkeypatch.setenv("OCR_LLM_BASE_URL", "http://vision.invalid/v1")
+    monkeypatch.delenv("OCR_LLM_DEFAULT_MODEL", raising=False)
+    try:
+        with pytest.raises(ConfigError), TestClient(app):
+            pass
     finally:
         get_vision_config.cache_clear()
