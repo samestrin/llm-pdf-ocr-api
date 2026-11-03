@@ -244,3 +244,29 @@ def test_markdown_marks_a_failed_page_as_failed(monkeypatch):
 
     assert f"> **Page {number} failed** (ocr_failed): tesseract blew up" in md
     assert f"Method: {Method.TESSERACT}" in md
+
+
+# The page text itself reaches both outputs
+
+
+def test_json_carries_the_text_of_every_ok_page(monkeypatch):
+    fake_ocr(monkeypatch)
+    doc = extract_pdf(MIXED)
+
+    payload = json.loads(render_json(doc))
+
+    assert [p["text"] for p in payload["pages"]] == [p.text for p in doc.pages]
+    by_method = {p["method"]: p["text"] for p in payload["pages"]}
+    assert by_method["tesseract"] == "ocr text"
+    assert by_method["text_layer"].strip()
+
+
+def test_markdown_carries_the_text_of_every_ok_page(monkeypatch):
+    fake_ocr(monkeypatch)
+    doc = extract_pdf(MIXED)
+
+    md = render_markdown(doc)
+
+    for page in doc.pages:
+        section = md.split(f"## Page {page.number}\n")[1].split("\n## Page ")[0]
+        assert page.text.strip() and page.text in section
