@@ -29,7 +29,7 @@ KNOWN = {
 def env_blocks() -> dict[str, dict[str, str]]:
     """Each ```dotenv block in the page, keyed by the heading above it."""
     blocks, heading = {}, None
-    for match in re.finditer(r"^#+ (.+)$|^```dotenv\n(.*?)^```$", DOC.read_text(), re.M | re.S):
+    for match in re.finditer(r"^#+ ([^\n]+)$|^```dotenv\n(.*?)^```$", DOC.read_text(), re.M | re.S):
         if match[1]:
             heading = match[1].strip()
             continue
