@@ -16,6 +16,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 - Per-page output (`llm_pdf_ocr.extract`): `extract_pdf` reads each page from the text layer or Tesseract, and `render_markdown` / `render_json` state the method of every page. A page that fails is reported as `failed` with an error code and message, never as an empty page; the other pages are still returned.
 - `POST /v1/extract`: upload a PDF and get Markdown or JSON back (`format=markdown|json`), optionally for a page range (`pages=1-3,5`). A bad, encrypted or page-less PDF and a bad page range return 400 with an error code and no stack trace. OpenAPI docs are at `/docs`.
 
+### Security
+
+- No request field can cause a model to be downloaded or loaded: `model` and the other 0.0.1 form fields are ignored by `/ocr` and `/v1/extract`, and a test blocks the network to prove it.
+
 ### Deprecated
 
 - `POST /ocr` is back as an alias for users of 0.0.1. It returns `{"text": ..., "failed_pages": [...]}` and sends a `Deprecation: true` header; the old `model` and image fields are ignored and nothing is downloaded. Use `POST /v1/extract`.

@@ -1,4 +1,6 @@
 import shutil
+import socket
+import sys
 from pathlib import Path
 
 import pymupdf
@@ -246,6 +248,28 @@ def test_ocr_ignores_the_old_model_fields(monkeypatch):
 
     assert response.status_code == 200
     assert "ocr text" in response.json()["text"]
+
+
+MODEL_LIBRARIES = ("transformers", "torch", "huggingface_hub", "timm")
+
+
+@pytest.mark.parametrize("route", ["/ocr", "/v1/extract"])
+def test_a_model_field_downloads_and_loads_nothing(monkeypatch, tmp_path, route):
+    fake_ocr(monkeypatch)
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    monkeypatch.setenv("TRANSFORMERS_CACHE", str(tmp_path / "hf"))
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("a request tried to open a network connection")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+
+    response = post(route, model="some/other-model")
+
+    assert response.status_code == 200
+    assert not any(name.split(".")[0] in MODEL_LIBRARIES for name in sys.modules)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_ocr_is_marked_deprecated(monkeypatch):
