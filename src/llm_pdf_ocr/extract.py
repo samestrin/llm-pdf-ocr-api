@@ -214,7 +214,7 @@ def extract_pdf(
         if vision.fallback_to_tesseract:
             for n in for_vision:
                 if results[n].status == "failed":
-                    results[n] = _fall_back(doc[n - 1], results[n], language)
+                    results[n] = _fall_back(doc[n - 1], results[n], language, page_timeout)
         return Document(pages=[results[n] for n in numbers])
 
 
@@ -362,10 +362,10 @@ def _read_with_vision(
     return results
 
 
-def _fall_back(page, failed: Page, language: str) -> Page:
+def _fall_back(page, failed: Page, language: str, timeout: float) -> Page:
     """Read a page the vision model failed on with Tesseract, recording why."""
     fallback = Fallback(method=failed.method, model=failed.model, error=failed.error)
-    return _ocr(page, language).model_copy(update={"fallback": fallback})
+    return _ocr(page, language, timeout).model_copy(update={"fallback": fallback})
 
 
 def _failed(
