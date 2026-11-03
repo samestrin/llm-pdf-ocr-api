@@ -5,6 +5,10 @@ Every page states how it was read (`text_layer`, `tesseract` or `vision`) and, f
 with an error code and message, and never as an empty page. Failures carry a short
 message only, no stack trace.
 
+A page the vision model cannot read (a timeout, a rate limit, a bad reply) is failed
+with that reason. Only when the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT` is it
+read by Tesseract instead, and then its `fallback` names the model and the reason.
+
 With `method=auto` a page uses its text layer when usable, else the vision model if
 one is configured, else Tesseract. A caller may force any one method instead.
 """
@@ -91,11 +95,22 @@ class PageError(BaseModel):
     message: str
 
 
+class Fallback(BaseModel):
+    """The method that failed before a page was read another way, and why."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: Method
+    model: str | None = None
+    error: PageError
+
+
 class Page(BaseModel):
     """The result for one page. `number` is 1-based.
 
     A failed page has an `error` and empty `text`; an ok page has no `error`.
     `confidence` (0 to 1) is only set for Tesseract, `model` only for `vision`.
+    `fallback` is set when the vision model failed and Tesseract read the page instead.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -107,6 +122,7 @@ class Page(BaseModel):
     text: str = ""
     confidence: float | None = None
     error: PageError | None = None
+    fallback: Fallback | None = None
 
 
 class Document(BaseModel):
@@ -195,6 +211,10 @@ def extract_pdf(
             else:
                 results[n] = page
         results.update(_read_with_vision(doc, for_vision, vision, model or None))
+        if vision.fallback_to_tesseract:
+            for n in for_vision:
+                if results[n].status == "failed":
+                    results[n] = _fall_back(doc[n - 1], results[n], language, page_timeout)
         return Document(pages=[results[n] for n in numbers])
 
 
@@ -214,6 +234,13 @@ def render_markdown(doc: Document) -> str:
             lines[-1] += f" · Model: {page.model}"
         if page.confidence is not None:
             lines[-1] += f" · Confidence: {page.confidence:.2f}"
+        if page.fallback is not None:
+            failed = page.fallback
+            lines += [
+                "",
+                f"> Read with Tesseract because {failed.method} ({failed.model}) failed "
+                f"({failed.error.code}): {failed.error.message}",
+            ]
         if page.error is not None:
             lines += [
                 "",
@@ -234,6 +261,7 @@ def _json_page(page: dict) -> dict:
         "text": page["text"],
         "confidence": page["confidence"],
         "error": page["error"],
+        "fallback": page["fallback"],
     }
 
 
@@ -332,6 +360,12 @@ def _read_with_vision(
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
         results.update((page.number, page) for page in pool.map(read, images))
     return results
+
+
+def _fall_back(page, failed: Page, language: str, timeout: float) -> Page:
+    """Read a page the vision model failed on with Tesseract, recording why."""
+    fallback = Fallback(method=failed.method, model=failed.model, error=failed.error)
+    return _ocr(page, language, timeout).model_copy(update={"fallback": fallback})
 
 
 def _failed(
