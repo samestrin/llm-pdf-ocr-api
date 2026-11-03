@@ -15,6 +15,9 @@ The first release since 0.0.1: the service is rebuilt around a PDF's text layer 
 
 ### Added
 
+- `benchmarks/`: twenty public-domain or freely licensed PDFs (born-digital, two-column, tables, forms, scans, poor scans) with reference text, Markdown reference tables, and a manifest of sources and licenses. A test checks every file has a source URL, a license and reference text. `benchmarks` is excluded from the Docker build context.
+- Every response has an `X-Request-ID` header, and every error body carries the same `request_id`. Each request logs one line (method, path, status, time, id), never the file or any page text (the path is escaped); the 404, 405 and 422 framework errors now use the same `{"error": ...}` body (`not_found`, `method_not_allowed`, `invalid_request`); an unhandled failure is answered with 500 `internal_error` and logged by exception type only.
+- Benchmark runner: `uv run python benchmarks/run.py` reports, per available method (text layer, Tesseract, and the vision model when `OCR_LLM_BASE_URL` is set), character error rate, table cell F1, seconds per page and failed pages, where a document with a failed page scores 0. Results go to a dated file in `benchmarks/results/` that names the vision model but never the endpoint URL or key.
 - `docker-compose.yml` runs the API, with an optional `vision` profile that adds a local Ollama vision endpoint. CI validates the file.
 - Docker image installs Tesseract with English data, runs as a non-root user and has a healthcheck on `/health`. CI starts the container and extracts all three fixtures through `POST /v1/extract`.
 - OCR fallback (`llm_pdf_ocr.ocr`): pages without a usable text layer are rendered at 300 DPI and read with the `tesseract` command, returning text and a 0 to 1 confidence. Tesseract must be installed.

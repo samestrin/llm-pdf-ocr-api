@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from bodies import without_request_id
 from fastapi.testclient import TestClient
 
 from llm_pdf_ocr import extract, ocr
@@ -108,7 +109,7 @@ def test_an_upload_one_byte_over_the_limit_gets_413(monkeypatch, route):
     response = post(route, MIXED)
 
     assert response.status_code == 413
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {
             "code": "file_too_large",
             "message": f"the file is larger than the limit of {len(MIXED) - 1} bytes",
@@ -123,7 +124,7 @@ def test_an_oversized_upload_gets_413(monkeypatch, route):
     response = post(route, b"%PDF-1.7\n" + b"x" * (3 * MiB))
 
     assert response.status_code == 413
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {
             "code": "file_too_large",
             "message": f"the file is larger than the limit of {MiB} bytes",
@@ -218,7 +219,7 @@ def test_a_pdf_over_the_page_limit_gets_413(monkeypatch):
     response = post("/v1/extract", long_pdf(30))
 
     assert response.status_code == 413
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {
             "code": "too_many_pages",
             "message": "30 pages selected; the limit is 5. Ask for fewer with `pages`",

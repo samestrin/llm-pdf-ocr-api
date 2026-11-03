@@ -1,0 +1,28 @@
+Table 2: Comparison of Mixtral with Llama. Mixtral outperforms or matches Llama 2 70B performance on
+almost all popular benchmarks while using 5x fewer active parameters during inference.
+Figure 3: Results on MMLU, commonsense reasoning, world knowledge and reading comprehension,
+math and code for Mistral (7B/8x7B) vs Llama 2 (7B/13B/70B). Mixtral largely outperforms Llama 2 70B
+on all benchmarks, except on reading comprehension benchmarks while using 5x lower active parameters. It
+is also vastly superior to Llama 2 70B on code and math.
+Detailed results for Mixtral, Mistral 7B and Llama 2 7B/13B/70B and Llama 1 34B2 are reported
+in Table 2. Figure 2 compares the performance of Mixtral with the Llama models in different
+categories. Mixtral surpasses Llama 2 70B across most metrics. In particular, Mixtral displays a
+superior performance in code and mathematics benchmarks.
+Size and Efficiency. We compare our performance to the Llama 2 family, aiming to understand
+Mixtral models’ efficiency in the cost-performance spectrum (see Figure 3). As a sparse Mixture-
+of-Experts model, Mixtral only uses 13B active parameters for each token. With 5x lower active
+parameters, Mixtral is able to outperform Llama 2 70B across most categories.
+Note that this analysis focuses on the active parameter count (see Section 2.1), which is directly
+proportional to the inference compute cost, but does not consider the memory costs and hardware
+utilization. The memory costs for serving Mixtral are proportional to its sparse parameter count,
+47B, which is still smaller than Llama 2 70B. As for device utilization, we note that the SMoEs layer
+introduces additional overhead due to the routing mechanism and due to the increased memory loads
+when running more than one expert per device. They are more suitable for batched workloads where
+one can reach a good degree of arithmetic intensity.
+Comparison with Llama 2 70B and GPT-3.5. In Table 3, we report the performance of Mixtral 8x7B
+compared to Llama 2 70B and GPT-3.5. We observe that Mixtral performs similarly or above the
+two other models. On MMLU, Mixtral obtains a better performance, despite its significantly smaller
+capacity (47B tokens compared to 70B). For MT Bench, we report the performance of the latest
+GPT-3.5-Turbo model available, gpt-3.5-turbo-1106.
+2Since Llama 2 34B was not open-sourced, we report results for Llama 1 34B.
+4

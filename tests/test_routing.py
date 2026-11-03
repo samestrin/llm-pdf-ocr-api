@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from bodies import without_request_id
 from fastapi.testclient import TestClient
 from test_vision import MODEL, completion, server  # noqa: F401  (server is a fixture)
 
@@ -256,7 +257,7 @@ def test_api_refuses_forced_vision_without_a_backend(calls):
     response = post(method="vision")
 
     assert response.status_code == 400
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {
             "code": "vision_not_configured",
             "message": "the vision backend is not configured",

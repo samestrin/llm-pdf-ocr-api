@@ -122,12 +122,14 @@ Returns `{"status": "ok"}`.
 
 ## Error Handling
 
-A request that cannot be served returns `{"error": {"code": ..., "message": ...}}`, with no stack trace:
+A request that cannot be served returns `{"error": {"code": ..., "message": ..., "request_id": ...}}`, with no stack trace. `request_id` is also the `X-Request-ID` response header of every response and appears in the service log line for the request, which never holds the file or any page text:
 
 - **400 Bad Request**: `invalid_pdf` (not a readable PDF, or it has no pages), `encrypted_pdf`, `invalid_page_range` or `page_out_of_range`.
 - **404 Not Found**: `job_not_found`, for a job id that does not exist or has expired.
 - **413 Content Too Large**: `file_too_large` or `too_many_pages`.
-- **422 Unprocessable Entity**: a missing `file` or an unknown `format`.
+- **404 / 405**: `not_found` or `method_not_allowed`, for a route that does not exist or a wrong method.
+- **422 Unprocessable Entity**: `invalid_request`, a missing `file` or an unknown `format`.
+- **500 Internal Server Error**: `internal_error`, for a failure the service did not expect; the log names only its type.
 - **429 Too Many Requests**: `too_many_jobs`.
 
 ## Contribute

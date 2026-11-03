@@ -1,0 +1,232 @@
+Improved Baselines with Visual Instruction Tuning
+Haotian Liu1
+Chunyuan Li2
+Yuheng Li1
+Yong Jae Lee1
+1University of Wisconsin–Madison
+2Microsoft Research, Redmond
+https://llava-vl.github.io
+Abstract
+Large multimodal models (LMM) have recently shown
+encouraging progress with visual instruction tuning. In this
+paper, we present the first systematic study to investigate
+the design choices of LMMs in a controlled setting under
+the LLaVA framework. We show that the fully-connected
+vision-language connector in LLaVA is surprisingly power-
+ful and data-efficient. With simple modifications to LLaVA,
+namely, using CLIP-ViT-L-336px with an MLP projection
+and adding academic-task-oriented VQA data with response
+formatting prompts, we establish stronger baselines that
+achieve state-of-the-art across 11 benchmarks. Our final
+13B checkpoint uses merely 1.2M publicly available data,
+and finishes full training in ∼1 day on a single 8-A100 node.
+Furthermore, we present some early exploration of open
+problems in LMMs, including scaling to higher resolution
+inputs, compositional capabilities, and model hallucination,
+etc. We hope this makes state-of-the-art LMM research more
+accessible. Code and model will be publicly available.
+1. Introduction
+Large multimodal models (LMMs) have become increas-
+ingly popular in the research community, as they are
+the key building blocks towards general-purpose assis-
+tants [2, 30, 43]. Recent studies on LMMs are converg-
+ing on a central concept known as visual instruction tun-
+ing [36]. The results are promising, e.g. LLaVA [36] and
+MiniGPT-4 [62] demonstrate impressive results on natural
+instruction-following and visual reasoning capabilities. To
+better understand the capability of LMMs, multiple bench-
+marks [17, 27, 34, 37, 55] have been proposed. Recent
+works further demonstrate improved performance by scal-
+ing up the pretraining data [3, 14, 54], instruction-following
+data [14, 18, 29, 58], visual encoders [3], or language mod-
+els [39], respectively. The LLaVA architecture is also lever-
+aged in different downstream tasks and domains, including
+region-level [8, 56] and pixel-level [26, 50] understanding,
+biomedical assistants [31], image generation [5], adversarial
+studies [6, 59].
+VQAv2
+GQA
+VizWiz
+SQA-IMG
+TextVQA
+POPE
+MME
+MMBench
+MMBench-CN
+SEED-Bench
+LLaVA-Bench
+MM-Vet
+85.3
+1293.8
+49.5
+33.4
+63.1
+50.7
+78.9
+53.4
+58.2
+25.6
+78.2
+57.5
+38.9
+68.2
+61.5
+1487.5
+60.6
+56.7
+58.2
+80.0
+63.3
+53.6
+71.6
+61.3
+85.9
+1531.3
+67.7
+63.6
+61.6
+72.5
+36.1
+BLIP-2
+InstructBLIP
+Qwen-VL-Chat
+LLaVA-1.5
+101
+103
+# Training Samples (M)
+Instruct
+BLIP
+Qwen-VL
+-Chat
+LLaVA
+-1.5
+129
+1.2
+1400
+50
+0.56
+0.67
+Pre-training
+Instruction Tuning
+Figure 1. LLaVA-1.5 achieves SoTA on a broad range of 11 tasks
+(Top), with high training sample efficiency (Left) and simple mod-
+ifications to LLaVA (Right): an MLP connector and including
+academic-task-oriented data with response formatting prompts.
+However, despite many benchmarks and developments, it
+still remains unclear what the best recipe is to train LMMs
+towards the goal of general-purpose assistants. For exam-
+ple, LLaVA [36] excels in conversational-style visual rea-
+soning and even outperforms later approaches like Instruct-
+BLIP [14] on such benchmarks [55], while InstructBLIP
+excels in traditional VQA benchmarks that demands single-
+word or short answers. Given the significant differences
+in the model architecture and training data between them,
+the root cause of the disparity in their capabilities remains
+elusive, despite conjectures [37, 55]: the amount of training
+data, the usage of resamplers like Qformer [32], etc. To this
+arXiv:2310.03744v2  [cs.CV]  15 May 2024
+
+end, we present the first systematic study to investigate the
+design choices of LMMs in a controlled setting. Our study
+originates from LLaVA and builds a road map by carefully
+making effective contributions from the perspectives of the
+input, model, and data.
+First, we unveil that the fully-connected vision-language
+connector in LLaVA is surprisingly powerful and data-
+efficient, and we establish stronger and more feasible base-
+lines built upon the LLaVA framework. We report that two
+simple improvements, namely, an MLP cross-modal con-
+nector and incorporating academic task related data such
+as VQA, are orthogonal to the framework of LLaVA, and
+when used with LLaVA, lead to better multimodal under-
+standing capabilities. In contrast to InstructBLIP [14] or
+Qwen-VL [3], which trains specially designed visual resam-
+plers on hundreds of millions or even billions of image-text
+paired data, LLaVA uses one of the simplest architecture
+design for LMMs and requires only training a simple fully-
+connected projection layer on merely 600K image-text pairs.
+Our final model can finish training in ∼1 day on a single
+8-A100 machine and achieves state-of-the-art results on a
+wide range of benchmarks. Moreover, unlike Qwen-VL [3]
+that includes in-house data in training, LLaVA utilizes only
+publicly available data.
+Next, we delve into an early exploration of other open
+problems of large multimodal models. Our findings include:
+(1) Scaling to high-resolution image inputs. We show that
+LLaVA’s architecture is versatile in scaling to higher res-
+olutions by simply dividing images into grids and main-
+tains its data efficiency; with the increased resolution, it
+improves the model’s detailed perception capabilities and
+reduces hallucination. (2) Compositional capabilities. We
+find that large multimodal models are capable of general-
+izing to compositional capabilities. For example, training
+on long-form language reasoning together with shorter vi-
+sual reasoning can improve the model’s writing capability
+for multimodal questions. (3) Data efficiency. We show
+that randomly downsampling LLaVA’s training data mixture
+by up to 75% does not significantly decrease the model’s
+performance, suggesting that the possibility of a more so-
+phisticated dataset compression strategy can further improve
+LLaVA’s already efficient training pipeline. (4) Data scaling.
+We provide empirical evidence for the scaling of data granu-
+larity in conjunction with the model’s capability is crucial
+for an improved capability without introducing artifacts like
+hallucination.
+In sum, we perform a systematic study on the training
+of large multimodal models, and introduce a simple yet
+effective approach to balance the multitask learning and ef-
+fective scaling for large multimodal models. Our improved
+baselines, LLaVA-1.5, uses only public data, achieves the
+state-of-the-art on a broad range of 11 tasks, and is signif-
+icantly more data-efficient than previous approaches. By
+rethinking the conventional approaches and exploring the
+open problems in visual instruction tuning, we pave the way
+for more robust and capable systems for LMMs. We hope
+these improved and easily-reproducible baselines will pro-
+vide a reference for future research in open-source LMMs.
+2. Related Work
+Instruction-following large multimodal models (LMMs).
+Common architectures include a pre-trained visual backbone
+to encode visual features, a pre-trained large language model
+(LLM) to comprehend the user instructions and produce
+responses, and a vision-language cross-modal connector
+to align the vision encoder outputs to the language mod-
+els. As shown in Fig. 1, LLaVA [36] is perhaps the sim-
+plest architecture for LMMs. Optionally, visual resamplers
+(e.g. Qformer [32]) are used to reduce the number of vi-
+sual patches [3, 14, 62]. Training an instruction-following
+LMM usually follows a two-stage protocol. First, the vision-
+language alignment pretraining stage leverages image-text
+pairs to align the visual features with the language model’s
+word embedding space. Earlier works utilize relatively few
+image-text pairs (e.g. ∼600K [36] or ∼6M [62]), while some
+recent works pretrain the vision-language connector for a spe-
+cific language model on a large amount of image-text pairs
+(e.g. 129M [14] and 1.4B [3]), to maximize the LMM’s per-
+formance. Second, the visual instruction tuning stage tunes
+the model on visual instructions [36], to enable the model to
+follow users’ diverse requests on instructions that involve the
+visual contents. Dealing with higher resolution with grids in
+LMM are studied in con-current works [1, 28, 53].
+Multimodal instruction-following data. In NLP, studies
+show that the quality of instruction-following data largely
+affects the capability of the resulting instruction-following
+models [61]. For visual instruction tuning, LLaVA [36] is the
+pioneer to leverage text-only GPT-4 to expand the existing
+COCO [35] bounding box and caption dataset to a multi-
+modal instruction-following dataset that contains three types
+of instruction-following data: conversational-style QA, de-
+tailed description, and complex reasoning. LLaVA’s pipeline
+has been employed to expand to textual understanding [57],
+million-scales [58], and region-level conversations [8]. In-
+structBLIP [14] incorporates academic-task-oriented VQA
+datasets to further enhance the model’s visual capabilities.
+Conversely, [7] identifies that such naive data merging can
+result in models that tend to overfit to VQA datasets and
+thus are unable to participate in natural conversations. The
+authors further propose to leverage the LLaVA pipeline to
+convert VQA datasets to a conversational style. While this
+proves effective for training, it introduces added complexities
+in data scaling. However, in NLP, the FLAN family [13, 51]
+shows that adding a large number of academic language
+tasks for instruction tuning can effectively improve the gen-

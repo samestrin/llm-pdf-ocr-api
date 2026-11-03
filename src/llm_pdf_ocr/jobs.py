@@ -8,6 +8,7 @@ this process: they are only visible to the process that holds them, so the
 service must run a single uvicorn worker.
 """
 
+import logging
 import secrets
 import threading
 import time
@@ -15,6 +16,8 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 class JobStatus(StrEnum):
@@ -106,7 +109,8 @@ class JobStore:
         try:
             job.result = work(data, job)
             job.status = JobStatus.DONE
-        except Exception:  # the message stays generic: no detail of the failure leaves
+        except Exception as exc:  # the message stays generic: no detail of the failure leaves
+            log.error("a job failed: %s", type(exc).__name__)
             job.error = {"code": "job_failed", "message": "the job could not be completed"}
             job.status = JobStatus.FAILED
         finally:

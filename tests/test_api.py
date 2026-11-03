@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from bodies import without_request_id
 from fastapi.testclient import TestClient
 
 from llm_pdf_ocr import extract
@@ -160,7 +161,7 @@ def test_extract_rejects_pages_beyond_the_pdf():
     response = post("/v1/extract", pages="2-9")
 
     assert response.status_code == 400
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {"code": "page_out_of_range", "message": "page 5 is not in a 4-page PDF"}
     }
 
@@ -184,7 +185,9 @@ def test_a_bad_pdf_is_rejected_cleanly(route, data):
     response = post(route, data=data)
 
     assert response.status_code == 400
-    assert response.json() == {"error": {"code": "invalid_pdf", "message": "not a readable PDF"}}
+    assert without_request_id(response) == {
+        "error": {"code": "invalid_pdf", "message": "not a readable PDF"}
+    }
     assert "Traceback" not in response.text
 
 
@@ -193,7 +196,9 @@ def test_a_pdf_with_no_pages_is_not_an_empty_success(route):
     response = post(route, data=b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF")
 
     assert response.status_code == 400
-    assert response.json() == {"error": {"code": "invalid_pdf", "message": "the PDF has no pages"}}
+    assert without_request_id(response) == {
+        "error": {"code": "invalid_pdf", "message": "the PDF has no pages"}
+    }
 
 
 @pytest.mark.parametrize("route", ["/v1/extract", "/ocr"])
@@ -201,7 +206,7 @@ def test_an_encrypted_pdf_has_its_own_error(route):
     response = post(route, data=encrypted_pdf())
 
     assert response.status_code == 400
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {"code": "encrypted_pdf", "message": "the PDF is encrypted"}
     }
 
