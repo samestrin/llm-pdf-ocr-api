@@ -57,6 +57,7 @@ JSON_SCHEMA = {
                                             "tesseract_not_found",
                                             "no_text_layer",
                                             "vision_failed",
+                                            "page_timeout",
                                         ]
                                     },
                                     "message": {"type": "string", "minLength": 1},
@@ -86,7 +87,7 @@ JSON_SCHEMA = {
 
 
 def fake_ocr(monkeypatch, text="ocr text", confidence=0.9, fail_on=(), exc=None):
-    def run(page, language="eng"):
+    def run(page, language="eng", timeout=None):
         if page.number + 1 in fail_on:
             raise exc or OcrError("tesseract blew up")
         return OcrResult(number=page.number + 1, text=text, confidence=confidence)
