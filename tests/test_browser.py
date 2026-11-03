@@ -10,7 +10,18 @@ import uvicorn
 from playwright.sync_api import expect, sync_playwright
 
 from llm_pdf_ocr.app import app
-from llm_pdf_ocr.extract import MethodChoice, extract_pdf, render_markdown
+from llm_pdf_ocr.extract import (
+    Document,
+    ErrorCode,
+    Fallback,
+    Method,
+    MethodChoice,
+    Page,
+    PageError,
+    extract_pdf,
+    render_json,
+    render_markdown,
+)
 from llm_pdf_ocr.jobs import JobStore
 
 ATTACK = "<img src=x onerror=alert(1)>"
@@ -153,6 +164,85 @@ def test_progress_comes_from_the_jobs_api(live_server, page):
     assert page.locator("#progress").evaluate("(p) => [p.value, p.max]") == [1, 3]
     _done(page)
     expect(page.locator("#progress")).to_be_hidden()
+
+
+def _first_poll(page, body: dict) -> None:
+    """Answer the first `GET /v1/jobs/{id}` with `body`; later polls reach the server."""
+    polls = []
+
+    def handle(route):
+        polls.append(route.request.url)
+        if len(polls) > 1:
+            return route.continue_()
+        return route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    page.route(re.compile(r"/v1/jobs/[\w-]+$"), handle)
+
+
+def test_progress_is_indeterminate_until_the_job_knows_its_pages(live_server, page):
+    # A first job leaves the bar at a value; the second must not show that stale value.
+    _first_poll(page, {"status": "running", "pages_total": 3, "pages_done": 2, "result": None})
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+    page.unroute_all()
+    _first_poll(page, {"status": "running", "pages_total": None, "pages_done": 0, "result": None})
+    page.click("#submit")
+
+    expect(page.locator("#status")).to_have_text("Reading pages: 0 of ?")
+    expect(page.locator("#progress")).to_be_visible()
+    assert page.locator("#progress").get_attribute("value") is None
+    _done(page)
+
+
+def test_a_failed_job_shows_its_message_and_no_result(live_server, page):
+    error = {"code": "job_failed", "message": "the job could not be completed"}
+    _first_poll(page, {"status": "failed", "pages_total": 1, "pages_done": 1, "error": error})
+    _extract(page, live_server, _pdf(PAGE_ONE))
+
+    status = page.locator("#status")
+    expect(status).to_have_text("the job could not be completed")
+    expect(status).to_have_class(re.compile("error"))
+    expect(page.locator("#results")).to_be_hidden()
+    expect(page.locator("#progress")).to_be_hidden()
+    expect(page.locator("#submit")).to_be_enabled()
+
+
+def test_model_confidence_and_fallback_are_shown_as_render_markdown_shows_them(live_server, page):
+    vision_failed = PageError(code=ErrorCode.VISION_FAILED, message="the model timed out")
+    doc = Document(
+        pages=[
+            Page(number=1, status="ok", method=Method.VISION, model="m-one", text=PAGE_ONE),
+            Page(
+                number=2,
+                status="ok",
+                method=Method.TESSERACT,
+                text=PAGE_TWO,
+                confidence=0.87,
+                fallback=Fallback(method=Method.VISION, model="m-one", error=vision_failed),
+            ),
+        ]
+    )
+    _first_poll(
+        page,
+        {
+            "status": "done",
+            "pages_total": 2,
+            "pages_done": 2,
+            "result": json.loads(render_json(doc)),
+            "error": None,
+        },
+    )
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+
+    cards = page.locator(".page-result")
+    expect(cards.nth(0).locator(".method")).to_have_text("Method: vision · Model: m-one")
+    expect(cards.nth(0).locator(".fallback")).to_have_count(0)
+    expect(cards.nth(1).locator(".method")).to_have_text("Method: tesseract · Confidence: 0.87")
+    expect(cards.nth(1).locator(".fallback")).to_have_text(
+        "Read with Tesseract because vision (m-one) failed (vision_failed): the model timed out"
+    )
+    assert page.locator("#result").text_content() == render_markdown(doc)
 
 
 def test_page_text_is_shown_literally_and_runs_no_script(live_server, page, dialogs):
