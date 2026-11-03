@@ -17,6 +17,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 - `POST /v1/extract`: upload a PDF and get Markdown or JSON back (`format=markdown|json`), optionally for a page range (`pages=1-3,5`). A bad, encrypted or page-less PDF and a bad page range return 400 with an error code and no stack trace. OpenAPI docs are at `/docs`.
 
 - Vision backend settings (`llm_pdf_ocr.config`), read from `OCR_LLM_BASE_URL`, `OCR_LLM_API_KEY`, `OCR_LLM_DEFAULT_MODEL`, `OCR_LLM_ALLOWED_MODELS` (comma list), `OCR_LLM_TIMEOUT_SECONDS`, `OCR_LLM_CONCURRENCY` and `OCR_LLM_FALLBACK_TO_TESSERACT`. The backend is off unless the base URL is set; a model outside the allowed list is refused; the Tesseract fallback for a failed page is off by default. Nothing calls a model yet.
+- Vision page reader (`llm_pdf_ocr.vision`): renders a page at 150 DPI and sends it to `{OCR_LLM_BASE_URL}/chat/completions` with a fixed prompt asking for Markdown with tables, returning the text, the model name and any usage numbers the endpoint reports. At most `OCR_LLM_CONCURRENCY` requests are in flight at once. Errors carry a code (`timeout`, `rate_limited`, `http_error`, `bad_response`, `empty_response`, `unreachable`) and never contain the API key, the base URL or the endpoint's own error text; redirects are refused so the key is only sent to the configured endpoint. Not yet used by `/v1/extract`.
 
 ### Security
 
