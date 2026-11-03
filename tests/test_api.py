@@ -147,6 +147,13 @@ def test_extract_rejects_a_malformed_page_range(pages):
     assert response.json()["error"]["code"] == "invalid_page_range"
 
 
+def test_extract_rejects_a_huge_range_without_expanding_it():
+    response = post("/v1/extract", pages="1-99999999999999999999")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "page_out_of_range"
+
+
 def test_extract_rejects_pages_beyond_the_pdf():
     response = post("/v1/extract", pages="2-9")
 
@@ -170,13 +177,21 @@ def test_extract_needs_a_file():
 
 
 @pytest.mark.parametrize("route", ["/v1/extract", "/ocr"])
-@pytest.mark.parametrize("data", [b"not a pdf", b"", BORN_DIGITAL[: len(BORN_DIGITAL) // 3]])
+@pytest.mark.parametrize("data", [b"not a pdf", b"", b"%PDF-1.7\n%garbage\n"])
 def test_a_bad_pdf_is_rejected_cleanly(route, data):
     response = post(route, data=data)
 
     assert response.status_code == 400
     assert response.json() == {"error": {"code": "invalid_pdf", "message": "not a readable PDF"}}
     assert "Traceback" not in response.text
+
+
+@pytest.mark.parametrize("route", ["/v1/extract", "/ocr"])
+def test_a_pdf_with_no_pages_is_not_an_empty_success(route):
+    response = post(route, data=b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF")
+
+    assert response.status_code == 400
+    assert response.json() == {"error": {"code": "invalid_pdf", "message": "the PDF has no pages"}}
 
 
 @pytest.mark.parametrize("route", ["/v1/extract", "/ocr"])
