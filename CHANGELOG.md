@@ -7,6 +7,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 ### Added
 
 - Release workflow (`.github/workflows/release.yml`): a `v*` tag publishes `ghcr.io/samestrin/llm-pdf-ocr-api` tagged `X.Y.Z` and `latest`, after a step that fails unless the tag equals `v` plus the `pyproject.toml` version. Only the publish job may write packages, and every action is pinned to a commit. A pull request that touches the workflow builds the image as a dry run without pushing and checks that the guard rejects a mismatched tag. CI now runs `actionlint` on the workflows.
+- [Release notes draft](docs/release-notes-1.0.0.md) for the owner: what changed, coming from 0.0.1, the image name, the private first GHCR publish and the vision benchmark step. No tag is pushed.
 
 ## 1.0.0
 
