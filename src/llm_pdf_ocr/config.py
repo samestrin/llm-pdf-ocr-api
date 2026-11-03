@@ -1,4 +1,4 @@
-"""Settings read from the environment: request limits and the vision-model backend.
+"""Settings read from the environment: request limits, jobs and the vision-model backend.
 
 The backend is off unless OCR_LLM_BASE_URL is set. Nothing here contacts the network.
 """
@@ -12,6 +12,8 @@ DEFAULT_CONCURRENCY = 2
 DEFAULT_MAX_FILE_MB = 50
 DEFAULT_MAX_PAGES = 500
 DEFAULT_PAGE_TIMEOUT = 120.0
+DEFAULT_JOB_TTL = 3600.0
+DEFAULT_MAX_JOBS = 20
 _MiB = 1024 * 1024
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -33,6 +35,14 @@ class Limits:
     max_file_bytes: int = DEFAULT_MAX_FILE_MB * _MiB
     max_pages: int = DEFAULT_MAX_PAGES
     page_timeout: float = DEFAULT_PAGE_TIMEOUT
+
+
+@dataclass(frozen=True)
+class JobSettings:
+    """How long a finished job's result is kept, and how many jobs are held at once."""
+
+    ttl: float = DEFAULT_JOB_TTL
+    max_jobs: int = DEFAULT_MAX_JOBS
 
 
 @dataclass(frozen=True)
@@ -92,6 +102,15 @@ def load_limits(env: Mapping[str, str] | None = None) -> Limits:
         max_file_bytes=int(max_file_mb * _MiB),
         max_pages=_number(env, "OCR_MAX_PAGES", DEFAULT_MAX_PAGES, int),
         page_timeout=_number(env, "OCR_PAGE_TIMEOUT_SECONDS", DEFAULT_PAGE_TIMEOUT, float),
+    )
+
+
+def load_job_settings(env: Mapping[str, str] | None = None) -> JobSettings:
+    """Read OCR_JOB_TTL_SECONDS and OCR_MAX_JOBS."""
+    env = os.environ if env is None else env
+    return JobSettings(
+        ttl=_number(env, "OCR_JOB_TTL_SECONDS", DEFAULT_JOB_TTL, float),
+        max_jobs=_number(env, "OCR_MAX_JOBS", DEFAULT_MAX_JOBS, int),
     )
 
 

@@ -93,6 +93,19 @@ To read scanned pages with a vision model, local or in the cloud, see [Vision mo
 
 If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
 
+### Jobs
+
+**Endpoint:** `/v1/jobs` **Method:** POST, then `/v1/jobs/{id}` **Method:** GET
+
+For a long PDF that takes minutes to read. `POST /v1/jobs` takes the same fields as `/v1/extract` and checks them the same way, then answers at once with 202, `{"id": ..., "status": "queued"}` and a `Location` header. `GET /v1/jobs/{id}` returns the job's `status` (`queued`, `running`, `done` or `failed`), `pages_total`, `pages_done`, each selected page as `pending`, `ok` or `failed`, and, once `done`, the `result`: the Markdown text, or the JSON document `/v1/extract` would return.
+
+```bash
+curl -F file=@long.pdf -F format=json localhost:5000/v1/jobs
+curl localhost:5000/v1/jobs/<id>
+```
+
+Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+
 ### OCR (deprecated)
 
 **Endpoint:** `/ocr` **Method:** POST
@@ -112,7 +125,10 @@ Returns `{"status": "ok"}`.
 A request that cannot be served returns `{"error": {"code": ..., "message": ...}}`, with no stack trace:
 
 - **400 Bad Request**: `invalid_pdf` (not a readable PDF, or it has no pages), `encrypted_pdf`, `invalid_page_range` or `page_out_of_range`.
+- **404 Not Found**: `job_not_found`, for a job id that does not exist or has expired.
+- **413 Content Too Large**: `file_too_large` or `too_many_pages`.
 - **422 Unprocessable Entity**: a missing `file` or an unknown `format`.
+- **429 Too Many Requests**: `too_many_jobs`.
 
 ## Contribute
 
