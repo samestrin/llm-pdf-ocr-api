@@ -17,8 +17,9 @@ While a job runs it renders each selected page as a PNG, served at
 
 `GET /` is a page for using the service from a browser (files in `llm_pdf_ocr/web/`,
 served with `Content-Security-Policy: default-src 'self'`, so it loads nothing from
-another origin). `GET /v1/capabilities` tells it which methods and vision model names
-it may offer; never the backend's URL or key.
+another origin). `OCR_WEB_PAGE=false` turns the page off for an API-only deployment:
+`/` and its files then answer 404. `GET /v1/capabilities` tells the page which methods
+and vision model names it may offer; never the backend's URL or key.
 """
 
 import json
@@ -44,6 +45,7 @@ from llm_pdf_ocr.config import (
     load_job_settings,
     load_limits,
     load_vision_config,
+    load_web_page,
 )
 from llm_pdf_ocr.extract import (
     Document,
@@ -84,6 +86,7 @@ app = FastAPI(
     description="Turn a PDF, scanned or not, into Markdown or JSON, page by page.",
 )
 app.state.limits = load_limits()
+app.state.web_page = load_web_page()
 _job_settings = load_job_settings()
 app.state.jobs = JobStore(max_jobs=_job_settings.max_jobs, ttl=_job_settings.ttl)
 app.add_middleware(UploadCap)
@@ -91,7 +94,18 @@ app.add_middleware(RequestLog)  # added last, so it is outermost
 
 WEB = Path(__file__).parent / "web"
 PAGE_CSP = "default-src 'self'"
-app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+
+class _PageFiles(StaticFiles):
+    """The page's files, or 404 when the page is turned off."""
+
+    async def __call__(self, scope, receive, send) -> None:
+        if not scope["app"].state.web_page:
+            raise StarletteHTTPException(status_code=404)
+        await super().__call__(scope, receive, send)
+
+
+app.mount("/static", _PageFiles(directory=WEB), name="static")
 
 
 class Format(StrEnum):
@@ -185,8 +199,10 @@ def health() -> dict[str, str]:
 
 
 @app.get("/", include_in_schema=False)
-def page() -> FileResponse:
+def page(request: Request) -> FileResponse:
     """The web page: pick a PDF, choose output and method, read the result."""
+    if not request.app.state.web_page:
+        raise StarletteHTTPException(status_code=404)
     return FileResponse(WEB / "index.html", headers={"Content-Security-Policy": PAGE_CSP})
 
 

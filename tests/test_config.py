@@ -5,6 +5,7 @@ from llm_pdf_ocr.config import (
     ModelNotAllowedError,
     VisionConfig,
     load_vision_config,
+    load_web_page,
 )
 
 FULL = {
@@ -107,3 +108,23 @@ def test_other_settings_without_base_url_stay_off():
     assert config.allowed_models == ()
     with pytest.raises(ModelNotAllowedError):
         config.resolve_model("vision-b")
+
+
+def test_web_page_is_on_with_nothing_configured():
+    assert load_web_page({}) is True
+    assert load_web_page({"OCR_WEB_PAGE": "  "}) is True
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", "OFF"])
+def test_web_page_can_be_turned_off(value):
+    assert load_web_page({"OCR_WEB_PAGE": value}) is False
+
+
+@pytest.mark.parametrize("value", ["true", "1", "yes", "On"])
+def test_web_page_can_be_turned_on(value):
+    assert load_web_page({"OCR_WEB_PAGE": value}) is True
+
+
+def test_web_page_rejects_an_unknown_value():
+    with pytest.raises(ConfigError, match="OCR_WEB_PAGE"):
+        load_web_page({"OCR_WEB_PAGE": "maybe"})

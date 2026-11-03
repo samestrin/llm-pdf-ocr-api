@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from llm_pdf_ocr.app import app, get_vision_config
@@ -107,3 +108,27 @@ def test_capabilities_with_vision_lists_only_method_and_model_names():
 
 def test_capabilities_is_read_only():
     assert client.post("/v1/capabilities").status_code == 405
+
+
+@pytest.fixture
+def page_off():
+    app.state.web_page = False
+    yield
+    app.state.web_page = True
+
+
+def test_root_is_404_when_the_page_is_off(page_off):
+    response = client.get("/")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
+    assert "content-security-policy" not in response.headers
+
+
+def test_page_assets_are_404_when_the_page_is_off(page_off):
+    assert client.get("/static/app.js").status_code == 404
+
+
+def test_api_still_answers_when_the_page_is_off(page_off):
+    assert client.get("/health").status_code == 200
+    assert client.get("/v1/capabilities").status_code == 200

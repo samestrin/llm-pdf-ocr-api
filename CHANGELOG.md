@@ -7,6 +7,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 ### Added
 
 - A web page at `/`: drop or pick a PDF, choose Markdown or JSON and a method (auto, text layer, Tesseract, and the vision model when one is configured), and read the result. Plain files in `llm_pdf_ocr/web/`, no build step and no other origin; `/` is served with `Content-Security-Policy: default-src 'self'`. CI loads the page and its assets from the container with the network off.
+- `OCR_WEB_PAGE=false` turns the web page off for an API-only deployment: `/` and `/static/` answer 404 `not_found`; the API is unchanged. On by default.
 - `GET /v1/capabilities`: the methods a request may use and the allowed vision model names, never the endpoint URL or key. The page reads it to decide whether to offer vision.
 - `GET /v1/jobs/{id}/pages/{n}.png`: each page a job reads, as a PNG (100 DPI, longer side at most 1600 px), rendered while the job runs. The images are dropped with the job's result after `OCR_JOB_TTL_SECONDS`, then the route answers 404 `job_not_found`; a page the job does not read answers 404 `page_not_found`. The uploaded PDF is still dropped when the job ends.
 
