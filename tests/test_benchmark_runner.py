@@ -102,8 +102,8 @@ def test_table_f1_is_one_for_the_same_table():
 
 def test_table_f1_counts_cells_not_layout():
     found = "| model | score |\n| --- | --- |\n| A | 1.0 |\n| B | 9.9 |\n"
-    # 3 of 4 predicted cells are right, and 3 of 4 reference cells are found.
-    assert run.table_f1(found, REFERENCE_TABLE) == pytest.approx(0.75)
+    # 5 of 6 predicted cells are right (case is ignored), and 5 of 6 reference cells found.
+    assert run.table_f1(found, REFERENCE_TABLE) == pytest.approx(5 / 6)
 
 
 def test_table_f1_is_zero_when_the_output_has_no_table():
@@ -160,9 +160,26 @@ def test_entries_without_reference_tables_have_no_table_score():
 
 
 def test_vision_runs_only_when_a_base_url_is_set():
-    assert run.available_methods(VisionConfig()) == ["text_layer", "tesseract"]
+    assert run.available_methods(VisionConfig(), tesseract=True) == ["text_layer", "tesseract"]
     configured = VisionConfig(base_url="http://x/v1", default_model="m", allowed_models=("m",))
-    assert run.available_methods(configured) == ["text_layer", "tesseract", "vision"]
+    assert run.available_methods(configured, tesseract=True) == [
+        "text_layer",
+        "tesseract",
+        "vision",
+    ]
+
+
+def test_tesseract_runs_only_when_it_is_installed(monkeypatch):
+    assert run.available_methods(VisionConfig(), tesseract=False) == ["text_layer"]
+    monkeypatch.setattr(run.shutil, "which", lambda name: None)
+    assert run.available_methods(VisionConfig()) == ["text_layer"]
+
+
+def test_a_date_that_is_not_a_date_is_an_error(tmp_path, capsys):
+    code = run.main(["--only", BORN_DIGITAL, "--out", str(tmp_path), "--date", "../escape"])
+    assert code == 2
+    assert "--date" in capsys.readouterr().err
+    assert not list(tmp_path.parent.glob("escape*"))
 
 
 def test_asking_for_vision_without_a_backend_is_an_error(tmp_path, monkeypatch, capsys):
@@ -209,7 +226,7 @@ def test_one_command_writes_a_dated_table_for_text_layer_and_tesseract(
 class FakeVision:
     """An OpenAI-compatible endpoint that answers every page with the same Markdown."""
 
-    def __init__(self, reply: str):
+    def __init__(self, reply: str, status: int = 200):
         payload = json.dumps(
             {"model": MODEL, "choices": [{"message": {"role": "assistant", "content": reply}}]}
         ).encode()
@@ -217,7 +234,7 @@ class FakeVision:
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 self.rfile.read(int(self.headers["Content-Length"]))
-                self.send_response(200)
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
@@ -268,9 +285,35 @@ def test_results_name_the_vision_model_but_never_the_url_or_key(
     assert API_KEY not in capsys.readouterr().out
 
 
+def test_a_vision_page_that_fails_is_counted_failed_even_with_the_tesseract_fallback():
+    server = FakeVision("unused", status=500)
+    try:
+        vision = VisionConfig(
+            base_url=server.base_url,
+            api_key=API_KEY,
+            default_model=MODEL,
+            allowed_models=(MODEL,),
+            timeout=5.0,
+            fallback_to_tesseract=True,
+        )
+        (result,) = run.run(entries(BORN_DIGITAL), ["vision"], vision, BENCH)
+    finally:
+        server.close()
+    assert (result.method, result.model, result.failed, result.score) == ("vision", MODEL, 1, 0.0)
+
+
 def test_a_results_file_that_would_hold_the_url_or_key_is_refused(tmp_path):
     vision = VisionConfig(base_url="https://llm.example.com/v1", api_key=API_KEY)
     for leaked in ("see https://llm.example.com/v1", f"key {API_KEY}", "host llm.example.com"):
         with pytest.raises(run.SecretInResultsError):
             run.write_results({"note": leaked}, "x", tmp_path, "2026-11-03", vision)
     assert not list(tmp_path.iterdir())
+
+
+def test_a_bare_host_name_that_is_also_the_model_name_is_not_a_leak(tmp_path):
+    # docker-compose's Ollama service is reached as http://ollama:11434/v1.
+    vision = VisionConfig(base_url="http://ollama:11434/v1", default_model="ollama-vision")
+    paths = run.write_results({"model": "ollama-vision"}, "x", tmp_path, "2026-11-03", vision)
+    assert [p.name for p in paths] == ["2026-11-03.json", "2026-11-03.md"]
+    with pytest.raises(run.SecretInResultsError):
+        run.write_results({"note": "ollama:11434"}, "x", tmp_path, "2026-11-04", vision)
