@@ -12,6 +12,8 @@ from typing import BinaryIO
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from llm_pdf_ocr.requestlog import current_request_id
+
 FORM_OVERHEAD = 64 * 1024
 
 
@@ -87,7 +89,9 @@ class UploadCap:
 
 async def _too_large(send: Send, limit: int) -> None:
     exc = FileTooLargeError(limit)
-    body = json.dumps({"error": {"code": exc.code, "message": str(exc)}}).encode()
+    body = json.dumps(
+        {"error": {"code": exc.code, "message": str(exc), "request_id": current_request_id()}}
+    ).encode()
     await send(
         {
             "type": "http.response.start",

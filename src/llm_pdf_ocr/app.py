@@ -1,7 +1,7 @@
 """FastAPI application for llm-pdf-ocr-api.
 
 A PDF that cannot be read, or a bad page range, is answered with 400 and
-`{"error": {"code": ..., "message": ...}}`, never a stack trace. So is a `model`
+`{"error": {"code": ..., "message": ..., "request_id": ...}}`, never a stack trace. So is a `model`
 outside the operator's list, and `method=vision` with no vision backend. A request
 over a limit (upload size, pages selected) is answered with 413 and the same body.
 A page that fails is reported in the result, and the other pages are still
@@ -22,7 +22,9 @@ from functools import cache
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from llm_pdf_ocr import __version__
 from llm_pdf_ocr.config import (
@@ -47,6 +49,7 @@ from llm_pdf_ocr.extract import (
 from llm_pdf_ocr.jobs import Job, JobStore, TooManyJobsError
 from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
 from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError
+from llm_pdf_ocr.requestlog import RequestLog, current_request_id
 
 
 @cache
@@ -72,6 +75,7 @@ app.state.limits = load_limits()
 _job_settings = load_job_settings()
 app.state.jobs = JobStore(max_jobs=_job_settings.max_jobs, ttl=_job_settings.ttl)
 app.add_middleware(UploadCap)
+app.add_middleware(RequestLog)  # added last, so it is outermost
 
 
 class Format(StrEnum):
@@ -80,9 +84,24 @@ class Format(StrEnum):
 
 
 def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code, content={"error": {"code": code, "message": message}}
+    error = {"code": code, "message": message, "request_id": current_request_id()}
+    return JSONResponse(status_code=status_code, content={"error": error})
+
+
+@app.exception_handler(RequestValidationError)
+def _invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+    fields = sorted({".".join(str(part) for part in e["loc"][1:]) or "body" for e in exc.errors()})
+    return _error(
+        "invalid_request", f"missing or invalid field: {', '.join(fields)}", status_code=422
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
+    response = _error(code, str(exc.detail), status_code=exc.status_code)
+    response.headers.update(exc.headers or {})
+    return response
 
 
 @app.exception_handler(PdfReadError)

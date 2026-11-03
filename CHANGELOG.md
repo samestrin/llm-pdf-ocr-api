@@ -16,6 +16,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 ### Added
 
 - `benchmarks/`: twenty public-domain or freely licensed PDFs (born-digital, two-column, tables, forms, scans, poor scans) with reference text, Markdown reference tables, and a manifest of sources and licenses. A test checks every file has a source URL, a license and reference text. `benchmarks` is excluded from the Docker build context.
+- Every response has an `X-Request-ID` header, and every error body carries the same `request_id`. Each request logs one line (method, path, status, time, id), never the file or any page text (the path is escaped); the 404, 405 and 422 framework errors now use the same `{"error": ...}` body (`not_found`, `method_not_allowed`, `invalid_request`); an unhandled failure is answered with 500 `internal_error` and logged by exception type only.
 - `docker-compose.yml` runs the API, with an optional `vision` profile that adds a local Ollama vision endpoint. CI validates the file.
 - Docker image installs Tesseract with English data, runs as a non-root user and has a healthcheck on `/health`. CI starts the container and extracts all three fixtures through `POST /v1/extract`.
 
