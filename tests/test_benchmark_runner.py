@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from llm_pdf_ocr.config import VisionConfig
+from llm_pdf_ocr.extract import Document, ErrorCode, Method, Page, PageError
 
 BENCH = Path(__file__).parent.parent / "benchmarks"
 _spec = importlib.util.spec_from_file_location("benchmark_run", BENCH / "run.py")
@@ -140,6 +141,21 @@ def test_a_failed_page_fails_the_table_score_too(monkeypatch):
     monkeypatch.setattr(run, "extract_pdf", broken)
     (failed,) = run.run(entries(TABLES), ["text_layer"], VisionConfig(), BENCH)
     assert (failed.failed, failed.pages, failed.score, failed.table_f1) == (1, 1, 0.0, 0.0)
+
+
+def test_one_failed_page_scores_the_whole_document_zero_despite_text_on_the_others(monkeypatch):
+    reference = (BENCH / "reference" / f"{TABLES}.txt").read_text(encoding="utf-8")
+    tables = (BENCH / "reference" / f"{TABLES}.tables.md").read_text(encoding="utf-8")
+    error = PageError(code=ErrorCode.NO_TEXT_LAYER, message="the page has no usable text layer")
+    pages = [
+        Page(number=1, status="ok", method=Method.TEXT_LAYER, text=f"{reference}\n\n{tables}"),
+        Page(number=2, status="failed", method=Method.TEXT_LAYER, error=error),
+    ]
+    monkeypatch.setattr(run, "extract_pdf", lambda *args, **kwargs: Document(pages=pages))
+    (result,) = run.run(entries(TABLES), ["text_layer"], VisionConfig(), BENCH)
+    # Page 1 alone would score perfectly; the failed page 2 must still zero the document.
+    assert (result.pages, result.failed) == (2, 1)
+    assert (result.cer, result.score, result.table_f1) == (1.0, 0.0, 0.0)
 
 
 def test_a_failed_document_is_counted_in_the_summary_never_skipped():
