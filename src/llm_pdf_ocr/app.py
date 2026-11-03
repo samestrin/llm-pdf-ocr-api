@@ -6,8 +6,15 @@ outside the operator's list, and `method=vision` with no vision backend. A reque
 over a limit (upload size, pages selected) is answered with 413 and the same body.
 A page that fails is reported in the result, and the other pages are still
 returned. The limits come from the environment (`llm_pdf_ocr.config.load_limits`).
+
+`POST /v1/jobs` takes the same request as `/v1/extract`, checks it the same way,
+and answers 202 with a job id; `GET /v1/jobs/{id}` gives the progress per page and
+the result when done. Jobs live in this process's memory (`llm_pdf_ocr.jobs`), so
+the service runs a single uvicorn worker. Over `OCR_MAX_JOBS` held jobs, `POST`
+answers 429; a job finished more than `OCR_JOB_TTL_SECONDS` ago is gone (404).
 """
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
@@ -22,10 +29,12 @@ from llm_pdf_ocr.config import (
     Limits,
     ModelNotAllowedError,
     VisionConfig,
+    load_job_settings,
     load_limits,
     load_vision_config,
 )
 from llm_pdf_ocr.extract import (
+    Document,
     MethodChoice,
     PageRangeError,
     TooManyPagesError,
@@ -33,7 +42,9 @@ from llm_pdf_ocr.extract import (
     extract_pdf,
     render_json,
     render_markdown,
+    select_pages,
 )
+from llm_pdf_ocr.jobs import Job, JobStore, TooManyJobsError
 from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
 from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError
 
@@ -48,6 +59,7 @@ def get_vision_config() -> VisionConfig:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_vision_config()  # a bad OCR_LLM_* value stops the service at start, not per request
     yield
+    app.state.jobs.shutdown()
 
 
 app = FastAPI(
@@ -57,6 +69,8 @@ app = FastAPI(
     description="Turn a PDF, scanned or not, into Markdown or JSON, page by page.",
 )
 app.state.limits = load_limits()
+_job_settings = load_job_settings()
+app.state.jobs = JobStore(max_jobs=_job_settings.max_jobs, ttl=_job_settings.ttl)
 app.add_middleware(UploadCap)
 
 
@@ -101,8 +115,32 @@ def _over_a_limit(request: Request, exc: FileTooLargeError | TooManyPagesError) 
     return _error(exc.code, str(exc), status_code=413)
 
 
+@app.exception_handler(TooManyJobsError)
+def _too_many_jobs(request: Request, exc: TooManyJobsError) -> JSONResponse:
+    return _error(exc.code, str(exc), status_code=429)
+
+
 def _limits(request: Request) -> Limits:
     return request.app.state.limits
+
+
+PdfFile = Annotated[UploadFile, File(description="The PDF.")]
+FormatField = Annotated[Format, Form(description="`markdown` or `json`.")]
+PagesField = Annotated[
+    str | None, Form(description="1-based pages to read, such as `1-3,5`. Default: all.")
+]
+MethodField = Annotated[
+    MethodChoice,
+    Form(
+        description="`auto` (default): the text layer when usable, else the vision model "
+        "if configured, else Tesseract. Or `text_layer`, `tesseract` or `vision` for "
+        "every page."
+    ),
+]
+ModelField = Annotated[
+    str | None,
+    Form(description="Vision model, from the operator's list. Default: the operator's."),
+]
 
 
 @app.get("/health")
@@ -128,23 +166,11 @@ def health() -> dict[str, str]:
 )
 def extract(
     request: Request,
-    file: Annotated[UploadFile, File(description="The PDF.")],
-    format: Annotated[Format, Form(description="`markdown` or `json`.")] = Format.MARKDOWN,
-    pages: Annotated[
-        str | None, Form(description="1-based pages to read, such as `1-3,5`. Default: all.")
-    ] = None,
-    method: Annotated[
-        MethodChoice,
-        Form(
-            description="`auto` (default): the text layer when usable, else the vision model "
-            "if configured, else Tesseract. Or `text_layer`, `tesseract` or `vision` for "
-            "every page."
-        ),
-    ] = MethodChoice.AUTO,
-    model: Annotated[
-        str | None,
-        Form(description="Vision model, from the operator's list. Default: the operator's."),
-    ] = None,
+    file: PdfFile,
+    format: FormatField = Format.MARKDOWN,
+    pages: PagesField = None,
+    method: MethodField = MethodChoice.AUTO,
+    model: ModelField = None,
     *,
     vision: Vision,
 ) -> Response:
@@ -189,3 +215,87 @@ def ocr(
         "text": "\n\n".join(p.text for p in doc.pages if p.status == "ok"),
         "failed_pages": doc.failed_pages,
     }
+
+
+@app.post(
+    "/v1/jobs",
+    status_code=202,
+    responses={
+        202: {"description": "The job is queued. `Location` is where to follow it."},
+        400: {"description": "As for `/v1/extract`."},
+        413: {"description": "As for `/v1/extract`."},
+        429: {"description": "The service holds as many jobs as it may. Try again later."},
+    },
+)
+def create_job(
+    request: Request,
+    response: Response,
+    file: PdfFile,
+    format: FormatField = Format.MARKDOWN,
+    pages: PagesField = None,
+    method: MethodField = MethodChoice.AUTO,
+    model: ModelField = None,
+    *,
+    vision: Vision,
+) -> dict:
+    """Queue a PDF to be read like `/v1/extract`, and answer at once with the job's id.
+
+    The request is checked first, so a bad PDF, page range, model or a request over
+    a limit is refused here and no job is made.
+    """
+    limits = _limits(request)
+    data = read_upload(file.file, limits.max_file_bytes)
+    select_pages(
+        data, pages=pages, method=method, model=model, vision=vision, max_pages=limits.max_pages
+    )
+
+    def work(data: bytes, job: Job) -> Document:
+        return extract_pdf(
+            data,
+            pages=pages,
+            method=method,
+            model=model,
+            vision=vision,
+            max_pages=limits.max_pages,
+            page_timeout=limits.page_timeout,
+            progress=job,
+        )
+
+    job = request.app.state.jobs.submit(data, work, format=format)
+    response.headers["Location"] = f"/v1/jobs/{job.id}"
+    return {"id": job.id, "status": job.status}
+
+
+@app.get(
+    "/v1/jobs/{job_id}",
+    responses={404: {"description": "No job with this id, or it has expired."}},
+)
+def get_job(request: Request, job_id: str) -> Response:
+    """A job's status and progress per page; `result` is set once it is `done`.
+
+    `result` is the Markdown text, or the JSON document `/v1/extract` would return.
+    A `failed` job has an `error`. Once a job has been finished for
+    `OCR_JOB_TTL_SECONDS`, it and its result are gone.
+    """
+    job = request.app.state.jobs.get(job_id)
+    if job is None:
+        return _error("job_not_found", "no job with this id, or it has expired", 404)
+    result = job.result
+    if result is not None:
+        if job.options["format"] is Format.JSON:
+            result = json.loads(render_json(result))
+        else:
+            result = render_markdown(result)
+    pages = sorted(job.pages.items())
+    return JSONResponse(
+        {
+            "id": job.id,
+            "status": job.status,
+            "format": job.options["format"],
+            "pages_total": job.pages_total,
+            "pages_done": sum(status != "pending" for _, status in pages),
+            "pages": [{"page": n, "status": status} for n, status in pages],
+            "result": result,
+            "error": job.error,
+        }
+    )

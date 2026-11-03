@@ -15,9 +15,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 import llm_pdf_ocr.app as api
-from llm_pdf_ocr import extract, jobs
+from llm_pdf_ocr import extract, jobs, vision
+from llm_pdf_ocr import ocr as ocr_module
 from llm_pdf_ocr.app import app
-from llm_pdf_ocr.config import ConfigError, JobSettings, load_job_settings
+from llm_pdf_ocr.config import ConfigError, JobSettings, VisionConfig, load_job_settings
+from llm_pdf_ocr.extract import MethodChoice, extract_pdf
 from llm_pdf_ocr.jobs import JobStore, TooManyJobsError
 
 ROOT = Path(__file__).parent.parent
@@ -123,7 +125,8 @@ def test_the_app_holds_jobs_with_the_settings_from_the_environment():
 
 def test_the_dockerfile_runs_a_single_uvicorn_worker():
     """In-memory jobs are only visible to the process that holds them."""
-    cmd = next(line for line in (ROOT / "Dockerfile").read_text().splitlines() if line[:4] == "CMD ")
+    lines = (ROOT / "Dockerfile").read_text().splitlines()
+    cmd = next(line for line in lines if line.startswith("CMD "))
     assert "uvicorn" in cmd
     assert "--workers" not in cmd
 
@@ -227,6 +230,76 @@ def test_a_job_still_running_does_not_expire(clock):
     assert job.finished.wait(WAIT)
     store.shutdown()
     assert job.status == "done"
+
+
+# Progress from extract_pdf
+
+
+class Recorder:
+    def __init__(self):
+        self.events = []
+
+    def selected(self, numbers):
+        self.events.append(("selected", list(numbers)))
+
+    def page_done(self, number, status):
+        self.events.append((number, status))
+
+
+def test_vision_pages_report_progress_too(monkeypatch):
+    config = VisionConfig(
+        base_url="http://vision.invalid/v1", default_model="m", allowed_models=("m",)
+    )
+    real = vision.render_page
+
+    def render(page):
+        if page.number == 1:  # 0-based: the PDF's page 2
+            raise RuntimeError("cannot render")
+        return real(page)
+
+    def read(png, number, config, model=None):
+        return vision.VisionResult(number=number, text="vision text", model="m")
+
+    monkeypatch.setattr(vision, "render_page", render)
+    monkeypatch.setattr(vision, "read_image", read)
+    progress = Recorder()
+
+    extract_pdf(text_pdf(3), method=MethodChoice.VISION, vision=config, progress=progress)
+
+    assert progress.events[0] == ("selected", [1, 2, 3])
+    assert sorted(progress.events[1:]) == [(1, "ok"), (2, "failed"), (3, "ok")]
+
+
+@pytest.mark.parametrize("tesseract_works, status", [(True, "ok"), (False, "failed")])
+def test_a_page_that_falls_back_to_tesseract_reports_progress_once(
+    monkeypatch, tesseract_works, status
+):
+    config = VisionConfig(
+        base_url="http://vision.invalid/v1",
+        default_model="m",
+        allowed_models=("m",),
+        fallback_to_tesseract=True,
+    )
+
+    def read(png, number, config, model=None):
+        if number == 2:
+            raise vision.VisionError("the vision model timed out")
+        return vision.VisionResult(number=number, text="vision text", model="m")
+
+    def ocr(page, language, timeout):
+        if not tesseract_works:
+            raise ocr_module.OcrError("tesseract failed")
+        return ocr_module.OcrResult(number=page.number + 1, text="tesseract text", confidence=0.9)
+
+    monkeypatch.setattr(vision, "read_image", read)
+    monkeypatch.setattr(extract, "ocr_page", ocr)
+    progress = Recorder()
+
+    doc = extract_pdf(text_pdf(3), method=MethodChoice.VISION, vision=config, progress=progress)
+
+    assert doc.pages[1].fallback is not None
+    assert doc.pages[1].status == status
+    assert sorted(progress.events[1:]) == [(1, "ok"), (2, status), (3, "ok")]
 
 
 # The API

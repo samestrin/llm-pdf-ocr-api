@@ -15,9 +15,10 @@ one is configured, else Tesseract. A caller may force any one method instead.
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
@@ -143,6 +144,14 @@ class Document(BaseModel):
         return [p.number for p in self.pages if p.status == "failed"]
 
 
+class Progress(Protocol):
+    """Told which pages a read selects, then of each page as it is read."""
+
+    def selected(self, numbers: Sequence[int]) -> None: ...
+
+    def page_done(self, number: int, status: str) -> None: ...
+
+
 _RANGE_ITEM = re.compile(r"(\d+)(?:-(\d+))?")
 
 
@@ -166,6 +175,22 @@ def parse_pages(spec: str, page_count: int) -> list[int]:
     return sorted(numbers)
 
 
+def select_pages(
+    data: bytes,
+    pages: str | None = None,
+    method: MethodChoice = MethodChoice.AUTO,
+    model: str | None = None,
+    vision: VisionConfig | None = None,
+    max_pages: int | None = None,
+) -> list[int]:
+    """Check a request as `extract_pdf` does before reading any page, and return
+    the page numbers it would read. Raises the same errors."""
+    vision = vision or VisionConfig()
+    _check_method(method, model, vision)
+    with open_pdf(data) as doc:
+        return list(_select(doc, pages, max_pages))
+
+
 def extract_pdf(
     data: bytes,
     language: str = DEFAULT_LANGUAGE,
@@ -175,11 +200,13 @@ def extract_pdf(
     vision: VisionConfig | None = None,
     max_pages: int | None = None,
     page_timeout: float = TIMEOUT_SECONDS,
+    progress: Progress | None = None,
 ) -> Document:
     """Read every page, or only those in the range `pages` (such as `1-3,5`), with
     `method`. `vision` is the operator's vision backend; without one, `auto` is the
     text layer where usable and Tesseract otherwise. Tesseract gets `page_timeout`
-    seconds per page.
+    seconds per page. `progress`, if given, is told the pages selected and then
+    each page as it is read.
 
     Before any page is read, a `model` the operator does not allow raises
     `ModelNotAllowedError` (with no backend, every model is refused), forcing
@@ -189,19 +216,17 @@ def extract_pdf(
     a bad range raises a `PageRangeError`.
     """
     vision = vision or VisionConfig()
-    if model:
-        vision.resolve_model(model)
-    if method is MethodChoice.VISION and not vision.enabled:
-        raise VisionNotConfiguredError("the vision backend is not configured")
+    _check_method(method, model, vision)
     with open_pdf(data) as doc:
-        if not len(doc):
-            raise InvalidPdfError("the PDF has no pages")
-        numbers = range(1, len(doc) + 1) if pages is None else parse_pages(pages, len(doc))
-        if max_pages is not None and len(numbers) > max_pages:
-            raise TooManyPagesError(
-                f"{len(numbers)} pages selected; the limit is {max_pages}. "
-                "Ask for fewer with `pages`"
-            )
+        numbers = _select(doc, pages, max_pages)
+        if progress is not None:
+            progress.selected(list(numbers))
+
+        def done(page: Page) -> Page:
+            if progress is not None:
+                progress.page_done(page.number, page.status)
+            return page
+
         results: dict[int, Page] = {}
         for_vision = []
         for n in numbers:
@@ -209,13 +234,37 @@ def extract_pdf(
             if page is None:
                 for_vision.append(n)
             else:
-                results[n] = page
-        results.update(_read_with_vision(doc, for_vision, vision, model or None))
+                results[n] = done(page)
+
+        def vision_done(page: Page) -> Page:
+            if page.status == "failed" and vision.fallback_to_tesseract:
+                return page  # reported once Tesseract has read it
+            return done(page)
+
+        results.update(_read_with_vision(doc, for_vision, vision, model or None, vision_done))
         if vision.fallback_to_tesseract:
             for n in for_vision:
                 if results[n].status == "failed":
-                    results[n] = _fall_back(doc[n - 1], results[n], language, page_timeout)
+                    results[n] = done(_fall_back(doc[n - 1], results[n], language, page_timeout))
         return Document(pages=[results[n] for n in numbers])
+
+
+def _check_method(method: MethodChoice, model: str | None, vision: VisionConfig) -> None:
+    if model:
+        vision.resolve_model(model)
+    if method is MethodChoice.VISION and not vision.enabled:
+        raise VisionNotConfiguredError("the vision backend is not configured")
+
+
+def _select(doc, pages: str | None, max_pages: int | None) -> Sequence[int]:
+    if not len(doc):
+        raise InvalidPdfError("the PDF has no pages")
+    numbers = range(1, len(doc) + 1) if pages is None else parse_pages(pages, len(doc))
+    if max_pages is not None and len(numbers) > max_pages:
+        raise TooManyPagesError(
+            f"{len(numbers)} pages selected; the limit is {max_pages}. Ask for fewer with `pages`"
+        )
+    return numbers
 
 
 def render_json(doc: Document) -> str:
@@ -318,7 +367,11 @@ def _ocr(page, language: str, timeout: float) -> Page:
 
 
 def _read_with_vision(
-    doc, numbers: list[int], config: VisionConfig, model: str | None
+    doc,
+    numbers: list[int],
+    config: VisionConfig,
+    model: str | None,
+    done: Callable[[Page], Page],
 ) -> dict[int, Page]:
     """Read pages with the vision model, at most `config.concurrency` at once."""
     if not numbers:
@@ -331,12 +384,14 @@ def _read_with_vision(
         try:
             images.append((n, vision_model.render_page(doc[n - 1])))
         except Exception:  # one bad page must not lose the rest
-            results[n] = _failed(
-                n,
-                Method.VISION,
-                ErrorCode.VISION_FAILED,
-                "the page could not be rendered",
-                model=resolved,
+            results[n] = done(
+                _failed(
+                    n,
+                    Method.VISION,
+                    ErrorCode.VISION_FAILED,
+                    "the page could not be rendered",
+                    model=resolved,
+                )
             )
 
     def read(item: tuple[int, bytes]) -> Page:
@@ -358,7 +413,9 @@ def _read_with_vision(
         )
 
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
-        results.update((page.number, page) for page in pool.map(read, images))
+        for future in as_completed([pool.submit(read, item) for item in images]):
+            page = done(future.result())
+            results[page.number] = page
     return results
 
 
