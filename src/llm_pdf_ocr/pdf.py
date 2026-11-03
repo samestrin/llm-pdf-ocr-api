@@ -21,6 +21,9 @@ MAX_BAD_RATIO = 0.1
 # MIN_CHARS_OVER_IMAGE, is a scan with a watermark or a stray label on it.
 SCAN_COVERAGE = 0.5
 MIN_CHARS_OVER_IMAGE = 50
+# Page images shown beside the text: this DPI, with the longer side at most this many pixels.
+PAGE_IMAGE_DPI = 100
+PAGE_IMAGE_MAX_SIDE = 1600
 
 _BAD_CATEGORIES = {"Cc", "Cf", "Co", "Cn", "Cs"}
 _REPLACEMENT = "\ufffd"
@@ -88,6 +91,13 @@ def read_pdf(data: bytes) -> list[PageText]:
     """Read the text layer of every page of a PDF."""
     with open_pdf(data) as doc:
         return [read_page(page) for page in doc]
+
+
+def render_page_image(page: pymupdf.Page) -> bytes:
+    """Render a page as a PNG at PAGE_IMAGE_DPI, its longer side capped at PAGE_IMAGE_MAX_SIDE."""
+    longer = max(page.rect.width, page.rect.height)
+    scale = min(PAGE_IMAGE_DPI / 72, PAGE_IMAGE_MAX_SIDE / longer)
+    return page.get_pixmap(matrix=pymupdf.Matrix(scale, scale)).tobytes("png")
 
 
 def read_page(page: pymupdf.Page) -> PageText:

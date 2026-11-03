@@ -12,6 +12,8 @@ and answers 202 with a job id; `GET /v1/jobs/{id}` gives the progress per page a
 the result when done. Jobs live in this process's memory (`llm_pdf_ocr.jobs`), so
 the service runs a single uvicorn worker. Over `OCR_MAX_JOBS` held jobs, `POST`
 answers 429; a job finished more than `OCR_JOB_TTL_SECONDS` ago is gone (404).
+While a job runs it renders each selected page as a PNG, served at
+`GET /v1/jobs/{id}/pages/{n}.png` and dropped with the result.
 
 `GET /` is a page for using the service from a browser (files in `llm_pdf_ocr/web/`,
 served with `Content-Security-Policy: default-src 'self'`, so it loads nothing from
@@ -21,6 +23,7 @@ and vision model names it may offer; never the backend's URL or key.
 """
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
@@ -57,8 +60,10 @@ from llm_pdf_ocr.extract import (
 )
 from llm_pdf_ocr.jobs import Job, JobStore, TooManyJobsError
 from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
-from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError
+from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError, open_pdf, render_page_image
 from llm_pdf_ocr.requestlog import RequestLog, current_request_id
+
+log = logging.getLogger(__name__)
 
 
 @cache
@@ -310,11 +315,12 @@ def create_job(
     """
     limits = _limits(request)
     data = read_upload(file.file, limits.max_file_bytes)
-    select_pages(
+    numbers = select_pages(
         data, pages=pages, method=method, model=model, vision=vision, max_pages=limits.max_pages
     )
 
     def work(data: bytes, job: Job) -> Document:
+        _render_images(data, numbers, job)
         return extract_pdf(
             data,
             pages=pages,
@@ -329,6 +335,16 @@ def create_job(
     job = request.app.state.jobs.submit(data, work, format=format)
     response.headers["Location"] = f"/v1/jobs/{job.id}"
     return {"id": job.id, "status": job.status}
+
+
+def _render_images(data: bytes, numbers: list[int], job: Job) -> None:
+    """Render each page the job reads, for the web page to show beside its text."""
+    with open_pdf(data) as doc:
+        for n in numbers:
+            try:
+                job.images[n] = render_page_image(doc[n - 1])
+            except Exception:  # the page is still read; it just has no image
+                log.warning("page %d: could not render its image", n)
 
 
 @app.get(
@@ -364,3 +380,27 @@ def get_job(request: Request, job_id: str) -> Response:
             "error": job.error,
         }
     )
+
+
+@app.get(
+    "/v1/jobs/{job_id}/pages/{number}.png",
+    response_class=Response,
+    responses={
+        200: {"description": "The page as a PNG.", "content": {"image/png": {}}},
+        404: {
+            "description": "No job with this id, it has expired, or it has no image of this page."
+        },
+    },
+)
+def get_page_image(request: Request, job_id: str, number: int) -> Response:
+    """One selected page of a job as a PNG, rendered while the job runs.
+
+    It is held as long as the job's result, and gone with it.
+    """
+    job = request.app.state.jobs.get(job_id)
+    if job is None:
+        return _error("job_not_found", "no job with this id, or it has expired", 404)
+    png = job.images.get(number)
+    if png is None:
+        return _error("page_not_found", f"this job has no image of page {number}", 404)
+    return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
