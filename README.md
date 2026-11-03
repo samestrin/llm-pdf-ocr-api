@@ -69,25 +69,44 @@ uv sync
 
 ## Endpoints
 
-### OCR
+Interactive OpenAPI docs are served at `/docs` (schema at `/openapi.json`).
+
+### Extract
+
+**Endpoint:** `/v1/extract` **Method:** POST
+
+Read a PDF page by page and return Markdown or JSON. Each page says how it was read: `text_layer` (the PDF's own text) or `tesseract` (OCR, with a 0 to 1 confidence).
+
+- `file`: PDF file
+- `format` (optional): `markdown` (default) or `json`.
+- `pages` (optional): 1-based pages to read, such as `1-3,5`. Defaults to every page.
+
+```bash
+curl -F file=@document.pdf -F format=json -F pages=1-2 localhost:5000/v1/extract
+```
+
+A page that could not be read is returned as `failed`, with an error code and message, and is listed in `failed_pages`; the other pages are still returned.
+
+### OCR (deprecated)
 
 **Endpoint:** `/ocr` **Method:** POST
 
-Process a PDF file and return the extracted text.
+Kept for users of 0.0.1. Returns `{"text": ..., "failed_pages": [...]}`: the text of every page that was read, and the pages that failed. The 0.0.1 `model`, `threshold_value`, `kernel_width`, `kernel_height` and `min_area` fields are ignored, and no model is downloaded. Use `/v1/extract` instead.
 
 - `file`: PDF file
-- `model` (optional): Specifies the OCR model to be used for text extraction. Defaults to microsoft/trocr-base-printed if not provided.
-- `threshold_value` (optional): Determines the threshold value for binary thresholding of images. The default value is 150.
-- `kernel_width` (optional): Defines the width of the kernel used in morphological operations to clean up the image. It defaults to 20.
-- `kernel_height` (optional): Specifies the height of the kernel used in morphological operations. The default is 1.
-- `min_area` (optional): Sets the minimum area of contours that are considered as valid lines of text. The default minimum area is 50.
+
+### Health
+
+**Endpoint:** `/health` **Method:** GET
+
+Returns `{"status": "ok"}`.
 
 ## Error Handling
 
-The API handles errors gracefully and returns appropriate error responses:
+A request that cannot be served returns `{"error": {"code": ..., "message": ...}}`, with no stack trace:
 
-- **400 Bad Request**: Invalid request parameters.
-- **500 Internal Server Error**: Unexpected server error.
+- **400 Bad Request**: `invalid_pdf` (not a readable PDF, or it has no pages), `encrypted_pdf`, `invalid_page_range` or `page_out_of_range`.
+- **422 Unprocessable Entity**: a missing `file` or an unknown `format`.
 
 ## Contribute
 

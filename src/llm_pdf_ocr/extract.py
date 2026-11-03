@@ -6,13 +6,14 @@ never as an empty page. Failures carry a short message only, no stack trace.
 """
 
 import json
+import re
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
 from llm_pdf_ocr.ocr import DEFAULT_LANGUAGE, OcrError, TesseractNotFoundError, ocr_page
-from llm_pdf_ocr.pdf import open_pdf, read_page
+from llm_pdf_ocr.pdf import InvalidPdfError, open_pdf, read_page
 
 
 class Method(StrEnum):
@@ -28,6 +29,18 @@ class ErrorCode(StrEnum):
     TEXT_LAYER_FAILED = "text_layer_failed"
     OCR_FAILED = "ocr_failed"
     TESSERACT_NOT_FOUND = "tesseract_not_found"
+
+
+class PageRangeError(ValueError):
+    """A page range is malformed or names a page the PDF does not have."""
+
+    code = "invalid_page_range"
+
+
+class PageOutOfRangeError(PageRangeError):
+    """A page range names a page the PDF does not have."""
+
+    code = "page_out_of_range"
 
 
 class PageError(BaseModel):
@@ -74,14 +87,43 @@ class Document(BaseModel):
         return [p.number for p in self.pages if p.status == "failed"]
 
 
-def extract_pdf(data: bytes, language: str = DEFAULT_LANGUAGE) -> Document:
-    """Read every page: the text layer where usable, Tesseract otherwise.
+_RANGE_ITEM = re.compile(r"(\d+)(?:-(\d+))?")
+
+
+def parse_pages(spec: str, page_count: int) -> list[int]:
+    """Parse a 1-based page range such as `1-3,5` into sorted, distinct page numbers.
+
+    Raises `PageRangeError` if it is malformed and `PageOutOfRangeError` if it
+    names a page beyond `page_count`.
+    """
+    numbers: set[int] = set()
+    for item in spec.split(","):
+        match = _RANGE_ITEM.fullmatch(item.strip())
+        first = int(match[1]) if match else 0
+        last = int(match[2] or first) if match else 0
+        if first < 1 or last < first:
+            raise PageRangeError(f"{spec.strip()!r} is not a page range like 1-3,5")
+        if last > page_count:
+            beyond = max(first, page_count + 1)
+            raise PageOutOfRangeError(f"page {beyond} is not in a {page_count}-page PDF")
+        numbers.update(range(first, last + 1))
+    return sorted(numbers)
+
+
+def extract_pdf(
+    data: bytes, language: str = DEFAULT_LANGUAGE, pages: str | None = None
+) -> Document:
+    """Read every page, or only those in the range `pages` (such as `1-3,5`):
+    the text layer where usable, Tesseract otherwise.
 
     A page that fails does not stop the others. A PDF that cannot be opened
-    raises a `PdfReadError`.
+    raises a `PdfReadError`; a bad range raises a `PageRangeError`.
     """
     with open_pdf(data) as doc:
-        return Document(pages=[_extract_page(page, language) for page in doc])
+        if not len(doc):
+            raise InvalidPdfError("the PDF has no pages")
+        numbers = range(1, len(doc) + 1) if pages is None else parse_pages(pages, len(doc))
+        return Document(pages=[_extract_page(doc[n - 1], language) for n in numbers])
 
 
 def render_json(doc: Document) -> str:
