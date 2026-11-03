@@ -7,6 +7,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 ### Added
 
 - A web page at `/`: drop or pick a PDF, choose Markdown or JSON and a method (auto, text layer, Tesseract, and the vision model when one is configured), and read the result. Plain files in `llm_pdf_ocr/web/`, no build step and no other origin; `/` is served with `Content-Security-Policy: default-src 'self'`. CI loads the page and its assets from the container with the network off.
+- `OCR_WEB_PAGE=false` turns the web page off for an API-only deployment: `/` and `/static/` answer 404 `not_found`; the API is unchanged. On by default.
 - `GET /v1/capabilities`: the methods a request may use and the allowed vision model names, never the endpoint URL or key. The page reads it to decide whether to offer vision.
 
 - Release workflow (`.github/workflows/release.yml`): a `v*` tag publishes `ghcr.io/samestrin/llm-pdf-ocr-api` tagged `X.Y.Z` and `latest`, after a step that fails unless the tag equals `v` plus the `pyproject.toml` version. Only the publish job may write packages, and every action is pinned to a commit. A pull request that touches the workflow builds the image as a dry run without pushing and checks that the guard rejects a mismatched tag. CI now runs `actionlint` on the workflows.

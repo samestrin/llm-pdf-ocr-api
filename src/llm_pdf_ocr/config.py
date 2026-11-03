@@ -1,4 +1,4 @@
-"""Settings read from the environment: request limits, jobs and the vision-model backend.
+"""Settings read from the environment: request limits, jobs, the web page and the vision backend.
 
 The backend is off unless OCR_LLM_BASE_URL is set. Nothing here contacts the network.
 """
@@ -112,6 +112,12 @@ def load_job_settings(env: Mapping[str, str] | None = None) -> JobSettings:
         ttl=_number(env, "OCR_JOB_TTL_SECONDS", DEFAULT_JOB_TTL, float),
         max_jobs=_number(env, "OCR_MAX_JOBS", DEFAULT_MAX_JOBS, int),
     )
+
+
+def load_web_page(env: Mapping[str, str] | None = None) -> bool:
+    """Read OCR_WEB_PAGE: whether `/` serves the web page. On unless set to false."""
+    env = os.environ if env is None else env
+    return _get(env, "OCR_WEB_PAGE") is None or _flag(env, "OCR_WEB_PAGE")
 
 
 def load_vision_config(env: Mapping[str, str] | None = None) -> VisionConfig:

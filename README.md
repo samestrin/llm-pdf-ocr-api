@@ -58,6 +58,7 @@ Everything is an environment variable; none is required.
 | `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
 | `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. |
 | `OCR_MAX_JOBS` | 20 | Jobs held at once. |
+| `OCR_WEB_PAGE` | true | Serve the web page at `/`. Set `false` for an API-only deployment: `/` and its files answer 404. |
 
 Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
 
@@ -126,7 +127,7 @@ Jobs are held in the service's memory and run one at a time. The PDF is dropped 
 
 **Endpoint:** `/` **Method:** GET
 
-A page to use the service from a browser: drop or pick a PDF, choose Markdown or JSON and a method, and read the result. It is plain HTML, CSS and JavaScript shipped inside the package (no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network.
+A page to use the service from a browser: drop or pick a PDF, choose Markdown or JSON and a method, and read the result. It is plain HTML, CSS and JavaScript shipped inside the package (no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network. For an API-only deployment, set `OCR_WEB_PAGE=false`: `/` and the page's files then answer 404, and every API endpoint works as before.
 
 ### Capabilities
 
