@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import jsonschema
-import pymupdf
 import pytest
 
 from llm_pdf_ocr import extract
@@ -66,7 +65,10 @@ JSON_SCHEMA = {
                     {
                         "if": {"properties": {"status": {"const": "failed"}}},
                         "then": {
-                            "properties": {"error": {"type": "object"}, "method": {"type": ["string", "null"]}}
+                            "properties": {
+                                "error": {"type": "object"},
+                                "method": {"type": ["string", "null"]},
+                            }
                         },
                         "else": {
                             "properties": {"error": {"type": "null"}, "method": {"type": "string"}}
@@ -134,11 +136,15 @@ def test_forced_ocr_failure_shows_as_failed_not_empty(monkeypatch):
 
 
 def test_missing_tesseract_has_its_own_error_code(monkeypatch):
-    fake_ocr(monkeypatch, fail_on=range(1, 100), exc=TesseractNotFoundError("tesseract is not installed"))
+    fake_ocr(
+        monkeypatch, fail_on=range(1, 100), exc=TesseractNotFoundError("tesseract is not installed")
+    )
 
     doc = extract_pdf(MIXED)
 
-    assert {p.error.code for p in doc.pages if p.status == "failed"} == {ErrorCode.TESSERACT_NOT_FOUND}
+    assert {p.error.code for p in doc.pages if p.status == "failed"} == {
+        ErrorCode.TESSERACT_NOT_FOUND
+    }
 
 
 def test_forced_text_layer_failure_shows_as_failed(monkeypatch):
@@ -152,7 +158,9 @@ def test_forced_text_layer_failure_shows_as_failed(monkeypatch):
     assert all(p.status == "failed" and p.method == Method.TEXT_LAYER for p in doc.pages)
     assert all(p.error.code == ErrorCode.TEXT_LAYER_FAILED for p in doc.pages)
     # no internal detail or traceback is passed on
-    assert all("secret" not in p.error.message and "Traceback" not in p.error.message for p in doc.pages)
+    assert all(
+        "secret" not in p.error.message and "Traceback" not in p.error.message for p in doc.pages
+    )
 
 
 def test_invalid_pdf_is_a_document_level_error():
@@ -196,7 +204,14 @@ def test_the_schema_rejects_an_empty_looking_failure():
         "page_count": 1,
         "failed_pages": [1],
         "pages": [
-            {"page": 1, "status": "failed", "method": "tesseract", "text": "", "confidence": None, "error": None}
+            {
+                "page": 1,
+                "status": "failed",
+                "method": "tesseract",
+                "text": "",
+                "confidence": None,
+                "error": None,
+            }
         ],
     }
 
