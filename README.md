@@ -2,70 +2,86 @@
 
 [![Star on GitHub](https://img.shields.io/github/stars/samestrin/llm-pdf-ocr-api?style=social)](https://github.com/samestrin/llm-pdf-ocr-api/stargazers)[![Fork on GitHub](https://img.shields.io/github/forks/samestrin/llm-pdf-ocr-api?style=social) ](https://github.com/samestrin/llm-pdf-ocr-api/network/members)[![Watch on GitHub](https://img.shields.io/github/watchers/samestrin/llm-pdf-ocr-api?style=social)](https://github.com/samestrin/llm-pdf-ocr-api/watchers)
 
-![Version 0.0.1](https://img.shields.io/badge/Version-0.0.1-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ](https://opensource.org/licenses/MIT)[![Built with Python](https://img.shields.io/badge/Built%20with-Python-green)](https://www.python.org/)
+![Version 1.0.0](https://img.shields.io/badge/Version-1.0.0-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ](https://opensource.org/licenses/MIT)[![Built with Python](https://img.shields.io/badge/Built%20with-Python-green)](https://www.python.org/)
 
-**llm-pdf-ocr-api** is a Flask-based web service designed to perform Optical Character Recognition (OCR) on PDF files using machine vision and AI models. Built on PyTorch and Transformers and optimized with NVIDIA CUDA, this API provides an endpoint for OCR processing. This API is wrapped in a Docker container.
+**llm-pdf-ocr-api** is a small FastAPI service that reads a PDF page by page and returns Markdown or JSON. Each page is read the cheapest way that works and the response says which way it was:
 
-### OCR Process Overview
+- `text_layer`: the PDF's own text, when it has a usable one.
+- `tesseract`: OCR with Tesseract, for scanned pages, with a 0 to 1 confidence.
+- `vision`: a vision model you point it at (local or in the cloud), if you configure one.
 
-When a user submits a file to the /ocr endpoint, the following steps are executed:
+A page that cannot be read is reported as `failed` with a reason; it is never returned as an empty page. Long PDFs can run as jobs with per-page progress.
 
-1.  **Receive the Request:**
-    - The server accepts a POST request containing the PDF file and optional parameters for OCR settings.
-2.  **Extract and Open the PDF:**
-    - The PDF file is extracted from the form data and opened to access its content.
-3.  **Configure OCR Parameters:**
-    - Parameters for the OCR process, such as the model and image processing settings, are set with defaults applied where not specified.
-      - Optional parameters are read from the form data, such as `model`, `threshold_value`, `kernel_width`, `kernel_height`, and `min_area`.
-      - Defaults are used for any parameters not provided.
-4.  **Process Each Page:**
-    - Each page of the PDF is processed sequentially. The steps include:
-      - Rendering the page as an image.
-      - Converting the image to grayscale and applying binary thresholding.
-      - Performing morphological operations to enhance image clarity.
-      - Extracting lines using contour detection and filtering by area.
-5.  **Extract Text:**
-    - Text is extracted from each line of the image using the TrOCR model. The text from all lines is compiled into a single output.
-6.  **Return the Response:**
-    - The extracted text is sent back in a JSON response.
-7.  **Handle Errors:**
-    - Errors during processing are caught and returned as a detailed error message.
+## Quick start
 
-## Dependencies
-
-- **Python**: The script runs in a Python3 environment.
-- **Flask**: Serves as the backbone of the web application, facilitating the creation of endpoints and handling HTTP requests.
-- **google-protobuf**: Utilized for data serialization and deserialization, important for model loading and configuration.
-- **gunicorn**: An extension that provides a Python WSGI HTTP Server for UNIX.
-- **numpy**: Supports high-performance operations on large multi-dimensional arrays and matrices, used extensively in image manipulation.
-- **OpenCV (opencv-python-headless)**: Used to segment larger bodies of text into individual lines.
-- **Pillow (PIL)**: Helps with image processing tasks through the Python Imaging Library (Fork).
-- **PyMuPDF (fitz)**: Utilized for PDF parsing with Python bindings for the MuPDF library.
-- **sentencepiece**: Helps with unsupervised text tokenization and detokenization.
-- **torch**: Utilized for machine learning tasks in computer vision and natural language processing.
-- **transformers**: State-of-the-art Natural Language Processing for TensorFlow 2.0 and PyTorch.
-
-### Installation
-
-To install llm-pdf-ocr-api, follow these steps:
-
-Begin by cloning the repository containing the llm-newsletter-generator to your local machine.
+Run the published image (no GPU and no model download; Tesseract is inside):
 
 ```bash
-git clone https://github.com/samestrin/llm-pdf-ocr-api/
+docker run -p 5000:5000 ghcr.io/samestrin/llm-pdf-ocr-api
 ```
 
-Navigate to the project directory:
+Or build it from this checkout and run that:
 
 ```bash
-cd llm-pdf-ocr-api
+docker build -t llm-pdf-ocr-api .
+docker run -d --name api -p 5000:5000 llm-pdf-ocr-api
 ```
 
-Install the required dependencies using [uv](https://docs.astral.sh/uv/):
+Then send it a PDF:
+
+```bash
+curl -F file=@document.pdf localhost:5000/v1/extract
+```
+
+`docker compose up` runs the same image, and `docker compose --profile vision up -d` adds a local Ollama server for the vision backend. To run without Docker, install [uv](https://docs.astral.sh/uv/) and Tesseract, then:
 
 ```bash
 uv sync
+uv run uvicorn llm_pdf_ocr.app:app --port 5000
 ```
+
+## Configuration
+
+Everything is an environment variable; none is required.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OCR_LLM_BASE_URL` | empty | Root of an OpenAI-compatible endpoint (ending in `/v1`). The vision backend is off while this is empty. |
+| `OCR_LLM_DEFAULT_MODEL` | none | Vision model used when a request names none; required when `OCR_LLM_BASE_URL` is set. |
+| `OCR_LLM_ALLOWED_MODELS` | the default model | Comma list of models a request may pick. |
+| `OCR_LLM_API_KEY` | empty | Bearer key for the endpoint. |
+| `OCR_LLM_TIMEOUT_SECONDS` | 60 | Per-request timeout to the vision endpoint. |
+| `OCR_LLM_CONCURRENCY` | 2 | Vision requests in flight at once. |
+| `OCR_LLM_FALLBACK_TO_TESSERACT` | false (true in `docker-compose.yml`) | Read a page with Tesseract when the vision model fails it. |
+| `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. |
+| `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. |
+| `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
+| `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. |
+| `OCR_MAX_JOBS` | 20 | Jobs held at once. |
+
+Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
+
+## Benchmark
+
+Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, committed in [`benchmarks/results/2026-11-03.md`](benchmarks/results/2026-11-03.md), which also has the per-document rows:
+
+| Method | Text score (1 − CER) | Table F1 | Seconds per page | Failed pages |
+|---|---:|---:|---:|---:|
+| `text_layer` | 0.557 | 0.000 | 0.01 | 7 |
+| `tesseract` | 0.702 | 0.000 | 2.43 | 0 |
+| `vision` | not measured | not measured | not measured | not measured |
+
+A document with a failed page scores 0, so `text_layer` is penalised for the seven scanned pages it cannot read (it fails them rather than guessing). Neither plain-text method recovers Markdown tables, so Table F1 is 0 for both. The vision row is empty because the committed run had no vision endpoint; it is filled in by running the benchmark with `OCR_LLM_BASE_URL` set.
+
+## Coming from 0.0.1
+
+0.0.1 was a Flask service that ran TrOCR on CUDA. 1.0.0 is a different service with the same repository:
+
+- Use `POST /v1/extract` instead of `/ocr`. It returns Markdown or JSON, says how each page was read and lists failed pages.
+- `/ocr` still works but is deprecated. It returns `{"text": ..., "failed_pages": [...]}`, and its `model`, `threshold_value`, `kernel_width`, `kernel_height` and `min_area` fields are now ignored.
+- No model is downloaded and no GPU is needed. TrOCR, PyTorch and Transformers are gone; scanned pages are read with Tesseract, or with a vision model if you configure one.
+- The server is uvicorn on port 5000 (it was gunicorn), and runs as a non-root user. Run one worker only, because jobs are held in memory.
+- Install with `uv sync`; `src/requirements.txt` is gone.
 
 ## Endpoints
 
@@ -91,7 +107,7 @@ A page that could not be read is returned as `failed`, with an error code and me
 
 To read scanned pages with a vision model, local or in the cloud, see [Vision model backend](docs/vision-backend.md). With none configured, scanned pages are read with Tesseract.
 
-If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
+If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default; `docker-compose.yml` turns it on unless you set it), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
 
 ### Jobs
 

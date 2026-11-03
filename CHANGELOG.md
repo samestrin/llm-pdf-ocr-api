@@ -14,6 +14,7 @@ The first release since 0.0.1: the service is rebuilt around a PDF's text layer 
 
 ### Changed
 
+- README rewritten: what the service does, a quick start (`docker run ghcr.io/samestrin/llm-pdf-ocr-api`, or build locally), a configuration table, the committed benchmark table (vision not measured) and a "Coming from 0.0.1" section. The badge says 1.0.0. Tests check the image name and that the local build-and-run commands are the ones CI's docker job runs.
 - The project is now a `uv`-managed Python package (`pyproject.toml`, `src/llm_pdf_ocr/`) served by FastAPI. Install with `uv sync`; `src/requirements.txt` is gone. The Docker image runs `uvicorn llm_pdf_ocr.app:app` on port 5000.
 - CI on GitHub-hosted runners runs ruff, pytest with an 80% coverage gate, and a Docker build. The version-badge workflow is removed.
 
