@@ -178,7 +178,7 @@ def test_a_done_job_holds_its_result_and_no_pdf_bytes(clock):
     assert job.data is None
 
 
-def test_a_failed_job_holds_no_pdf_bytes_and_a_generic_error(clock):
+def test_a_failed_job_holds_no_pdf_bytes_and_a_generic_error(clock, caplog):
     def work(data, job):
         raise RuntimeError("secret detail from deep inside")
 
@@ -190,6 +190,8 @@ def test_a_failed_job_holds_no_pdf_bytes_and_a_generic_error(clock):
     assert job.data is None
     assert job.result is None
     assert job.error == {"code": "job_failed", "message": "the job could not be completed"}
+    assert "RuntimeError" in caplog.text
+    assert "secret detail" not in caplog.text
 
 
 def test_the_store_refuses_a_job_over_the_cap(clock):
@@ -401,7 +403,7 @@ def test_after_a_job_ends_it_holds_no_pdf_bytes(store):
     assert job.data is None
 
 
-def test_a_job_that_fails_holds_no_pdf_bytes_and_says_why(store, monkeypatch):
+def test_a_job_that_fails_holds_no_pdf_bytes_and_says_why(store, monkeypatch, caplog):
     def explode(*args, **kwargs):
         raise RuntimeError("internal detail")
 
@@ -413,6 +415,8 @@ def test_a_job_that_fails_holds_no_pdf_bytes_and_says_why(store, monkeypatch):
     assert body["status"] == "failed"
     assert body["result"] is None
     assert body["error"] == {"code": "job_failed", "message": "the job could not be completed"}
+    assert "RuntimeError" in caplog.text
+    assert "internal detail" not in caplog.text
     assert "internal detail" not in json.dumps(body)
 
 

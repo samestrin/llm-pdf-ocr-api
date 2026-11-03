@@ -1,6 +1,7 @@
 """Logs carry no page text; error bodies and responses carry a request id."""
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -76,3 +77,38 @@ def test_unhandled_error_is_500_with_the_request_id(monkeypatch):
     error = response.json()["error"]
     assert error["code"] == "internal_error"
     assert error["request_id"] == response.headers["x-request-id"]
+
+
+def test_a_413_from_the_upload_cap_has_the_request_id():
+    saved = app.state.limits
+    app.state.limits = replace(saved, max_file_bytes=10)
+    try:
+        response = post()
+    finally:
+        app.state.limits = saved
+    assert response.status_code == 413
+    assert response.json()["error"]["request_id"] == response.headers["x-request-id"]
+
+
+@pytest.mark.parametrize(
+    ("call", "status", "code"),
+    [
+        (lambda: client.post("/v1/extract"), 422, "invalid_request"),
+        (lambda: client.get("/nope"), 404, "not_found"),
+        (lambda: client.get("/v1/extract"), 405, "method_not_allowed"),
+    ],
+)
+def test_framework_errors_use_the_error_body_with_the_request_id(call, status, code):
+    response = call()
+    assert response.status_code == status
+    error = response.json()["error"]
+    assert error["code"] == code
+    assert error["request_id"] == response.headers["x-request-id"]
+
+
+def test_an_encoded_newline_in_the_path_cannot_forge_a_log_line(caplog):
+    caplog.set_level(logging.INFO)
+    client.get("/health%0Arequest_id=forged%20status=200")
+    lines = [r.getMessage() for r in caplog.records if r.name.endswith("requestlog")]
+    assert len(lines) == 1
+    assert "\n" not in lines[0]

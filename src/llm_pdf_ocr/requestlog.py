@@ -63,7 +63,7 @@ class RequestLog:
                     await _server_error(tracked_send, request_id)
         finally:
             log.info(
-                "request_id=%s method=%s path=%s status=%d duration=%.3fs",
+                "request_id=%s method=%s path=%r status=%d duration=%.3fs",
                 request_id,
                 scope["method"],
                 scope["path"],
