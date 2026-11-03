@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from bodies import without_request_id
 from fastapi.testclient import TestClient
 
 import llm_pdf_ocr.app as api
@@ -429,7 +430,7 @@ def test_an_expired_jobs_result_is_gone(store, clock):
 def test_an_unknown_job_is_404():
     response = client.get("/v1/jobs/no-such-job")
     assert response.status_code == 404
-    assert response.json() == {
+    assert without_request_id(response) == {
         "error": {"code": "job_not_found", "message": "no job with this id, or it has expired"}
     }
 
