@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Added
+
+- Release workflow (`.github/workflows/release.yml`): a `v*` tag publishes `ghcr.io/samestrin/llm-pdf-ocr-api` tagged `X.Y.Z` and `latest`, after a step that fails unless the tag equals `v` plus the `pyproject.toml` version. Only the publish job may write packages, and every action is pinned to a commit. A pull request that touches the workflow builds the image as a dry run without pushing and checks that the guard rejects a mismatched tag. CI now runs `actionlint` on the workflows.
+
 ## 1.0.0
 
 The first release since 0.0.1: the service is rebuilt around a PDF's text layer and Tesseract, with an optional vision model you configure yourself. The version is set only in `pyproject.toml`; the package's `__version__` and the OpenAPI version are read from it, and the `.version` file is gone.

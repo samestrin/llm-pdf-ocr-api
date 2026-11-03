@@ -15,6 +15,14 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
 
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Lint the workflows
+        run: uvx --from actionlint-py==1.7.12.25 actionlint -color
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -38,12 +46,12 @@ jobs:
       - name: Start the container
         run: |
           docker run -d --name api -p 5000:5000 llm-pdf-ocr-api:ci
-          for i in $(seq 1 30); do curl -fsS localhost:5000/health && exit 0; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS localhost:5000/health && exit 0; sleep 1; done
           docker logs api; exit 1
       - name: Container runs as a non-root user and reports healthy
         run: |
           test "$(docker exec api id -u)" != "0"
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             [ "$(docker inspect -f '{{.State.Health.Status}}' api)" = healthy ] && exit 0
             sleep 2
           done
