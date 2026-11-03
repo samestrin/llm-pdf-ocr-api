@@ -34,11 +34,12 @@ JSON_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["page", "status", "method", "text", "confidence", "error"],
+                "required": ["page", "status", "method", "model", "text", "confidence", "error"],
                 "properties": {
                     "page": {"type": "integer", "minimum": 1},
                     "status": {"enum": ["ok", "failed"]},
-                    "method": {"enum": ["text_layer", "tesseract", None]},
+                    "method": {"enum": ["text_layer", "tesseract", "vision", None]},
+                    "model": {"type": ["string", "null"]},
                     "text": {"type": "string"},
                     "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
                     "error": {
@@ -54,6 +55,8 @@ JSON_SCHEMA = {
                                             "text_layer_failed",
                                             "ocr_failed",
                                             "tesseract_not_found",
+                                            "no_text_layer",
+                                            "vision_failed",
                                         ]
                                     },
                                     "message": {"type": "string", "minLength": 1},
@@ -209,6 +212,7 @@ def test_the_schema_rejects_an_empty_looking_failure():
                 "page": 1,
                 "status": "failed",
                 "method": "tesseract",
+                "model": None,
                 "text": "",
                 "confidence": None,
                 "error": None,

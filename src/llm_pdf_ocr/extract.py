@@ -1,17 +1,24 @@
 """Extract a PDF page by page and render the result as Markdown or JSON.
 
-Every page states how it was read (`text_layer` or `tesseract`). A page that
-could not be read is reported as failed, with an error code and message, and
-never as an empty page. Failures carry a short message only, no stack trace.
+Every page states how it was read (`text_layer`, `tesseract` or `vision`) and, for
+`vision`, which model read it. A page that could not be read is reported as failed,
+with an error code and message, and never as an empty page. Failures carry a short
+message only, no stack trace.
+
+With `method=auto` a page uses its text layer when usable, else the vision model if
+one is configured, else Tesseract. A caller may force any one method instead.
 """
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
+from llm_pdf_ocr import vision as vision_model
+from llm_pdf_ocr.config import VisionConfig
 from llm_pdf_ocr.ocr import DEFAULT_LANGUAGE, OcrError, TesseractNotFoundError, ocr_page
 from llm_pdf_ocr.pdf import InvalidPdfError, open_pdf, read_page
 
@@ -21,6 +28,16 @@ class Method(StrEnum):
 
     TEXT_LAYER = "text_layer"
     TESSERACT = "tesseract"
+    VISION = "vision"
+
+
+class MethodChoice(StrEnum):
+    """How the caller asks for pages to be read: `auto`, or one method for every page."""
+
+    AUTO = "auto"
+    TEXT_LAYER = "text_layer"
+    TESSERACT = "tesseract"
+    VISION = "vision"
 
 
 class ErrorCode(StrEnum):
@@ -29,6 +46,14 @@ class ErrorCode(StrEnum):
     TEXT_LAYER_FAILED = "text_layer_failed"
     OCR_FAILED = "ocr_failed"
     TESSERACT_NOT_FOUND = "tesseract_not_found"
+    NO_TEXT_LAYER = "no_text_layer"
+    VISION_FAILED = "vision_failed"
+
+
+class VisionNotConfiguredError(ValueError):
+    """The caller asked for the vision model, and none is configured."""
+
+    code = "vision_not_configured"
 
 
 class PageRangeError(ValueError):
@@ -56,7 +81,7 @@ class Page(BaseModel):
     """The result for one page. `number` is 1-based.
 
     A failed page has an `error` and empty `text`; an ok page has no `error`.
-    `confidence` (0 to 1) is only set for OCR.
+    `confidence` (0 to 1) is only set for Tesseract, `model` only for `vision`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -64,6 +89,7 @@ class Page(BaseModel):
     number: int
     status: Literal["ok", "failed"]
     method: Method
+    model: str | None = None
     text: str = ""
     confidence: float | None = None
     error: PageError | None = None
@@ -111,19 +137,42 @@ def parse_pages(spec: str, page_count: int) -> list[int]:
 
 
 def extract_pdf(
-    data: bytes, language: str = DEFAULT_LANGUAGE, pages: str | None = None
+    data: bytes,
+    language: str = DEFAULT_LANGUAGE,
+    pages: str | None = None,
+    method: MethodChoice = MethodChoice.AUTO,
+    model: str | None = None,
+    vision: VisionConfig | None = None,
 ) -> Document:
-    """Read every page, or only those in the range `pages` (such as `1-3,5`):
-    the text layer where usable, Tesseract otherwise.
+    """Read every page, or only those in the range `pages` (such as `1-3,5`), with
+    `method`. `vision` is the operator's vision backend; without one, `auto` is the
+    text layer where usable and Tesseract otherwise.
 
-    A page that fails does not stop the others. A PDF that cannot be opened
-    raises a `PdfReadError`; a bad range raises a `PageRangeError`.
+    Before any page is read, a `model` the operator does not allow raises
+    `ModelNotAllowedError` (with no backend, every model is refused), and forcing
+    `vision` with no backend raises `VisionNotConfiguredError`. A page that fails
+    does not stop the others. A PDF that cannot be opened raises a `PdfReadError`;
+    a bad range raises a `PageRangeError`.
     """
+    vision = vision or VisionConfig()
+    if model:
+        vision.resolve_model(model)
+    if method is MethodChoice.VISION and not vision.enabled:
+        raise VisionNotConfiguredError("the vision backend is not configured")
     with open_pdf(data) as doc:
         if not len(doc):
             raise InvalidPdfError("the PDF has no pages")
         numbers = range(1, len(doc) + 1) if pages is None else parse_pages(pages, len(doc))
-        return Document(pages=[_extract_page(doc[n - 1], language) for n in numbers])
+        results: dict[int, Page] = {}
+        for_vision = []
+        for n in numbers:
+            page = _route_page(doc[n - 1], method, vision.enabled, language)
+            if page is None:
+                for_vision.append(n)
+            else:
+                results[n] = page
+        results.update(_read_with_vision(doc, for_vision, vision, model or None))
+        return Document(pages=[results[n] for n in numbers])
 
 
 def render_json(doc: Document) -> str:
@@ -138,6 +187,8 @@ def render_markdown(doc: Document) -> str:
     sections = []
     for page in doc.pages:
         lines = [f"## Page {page.number}", "", f"Method: {page.method}"]
+        if page.model is not None:
+            lines[-1] += f" · Model: {page.model}"
         if page.confidence is not None:
             lines[-1] += f" · Confidence: {page.confidence:.2f}"
         if page.error is not None:
@@ -156,13 +207,19 @@ def _json_page(page: dict) -> dict:
         "page": page["number"],
         "status": page["status"],
         "method": page["method"],
+        "model": page["model"],
         "text": page["text"],
         "confidence": page["confidence"],
         "error": page["error"],
     }
 
 
-def _extract_page(page, language: str) -> Page:
+def _route_page(page, method: MethodChoice, vision_enabled: bool, language: str) -> Page | None:
+    """Read one page by any method but vision; None means it goes to the vision model."""
+    if method is MethodChoice.VISION:
+        return None
+    if method is MethodChoice.TESSERACT:
+        return _ocr(page, language)
     number = page.number + 1
     try:
         layer = read_page(page)
@@ -175,6 +232,17 @@ def _extract_page(page, language: str) -> Page:
         )
     if layer.usable:
         return Page(number=number, status="ok", method=Method.TEXT_LAYER, text=layer.text)
+    if method is MethodChoice.TEXT_LAYER:
+        return _failed(
+            number, Method.TEXT_LAYER, ErrorCode.NO_TEXT_LAYER, "the page has no usable text layer"
+        )
+    if vision_enabled:
+        return None
+    return _ocr(page, language)
+
+
+def _ocr(page, language: str) -> Page:
+    number = page.number + 1
     try:
         result = ocr_page(page, language)
     except TesseractNotFoundError as exc:
@@ -194,10 +262,58 @@ def _extract_page(page, language: str) -> Page:
     )
 
 
-def _failed(number: int, method: Method, code: ErrorCode, message: str) -> Page:
+def _read_with_vision(
+    doc, numbers: list[int], config: VisionConfig, model: str | None
+) -> dict[int, Page]:
+    """Read pages with the vision model, at most `config.concurrency` at once."""
+    if not numbers:
+        return {}
+    resolved = config.resolve_model(model)
+    results: dict[int, Page] = {}
+    images = []
+    # Rendering stays on this thread: PyMuPDF documents are not thread-safe.
+    for n in numbers:
+        try:
+            images.append((n, vision_model.render_page(doc[n - 1])))
+        except Exception:  # one bad page must not lose the rest
+            results[n] = _failed(
+                n,
+                Method.VISION,
+                ErrorCode.VISION_FAILED,
+                "the page could not be rendered",
+                model=resolved,
+            )
+
+    def read(item: tuple[int, bytes]) -> Page:
+        n, png = item
+        try:
+            result = vision_model.read_image(png, n, config, model)
+        except vision_model.VisionError as exc:
+            return _failed(n, Method.VISION, ErrorCode.VISION_FAILED, str(exc), model=resolved)
+        except Exception:  # the message stays generic
+            return _failed(
+                n,
+                Method.VISION,
+                ErrorCode.VISION_FAILED,
+                "the vision model could not read the page",
+                model=resolved,
+            )
+        return Page(
+            number=n, status="ok", method=Method.VISION, model=result.model, text=result.text
+        )
+
+    with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
+        results.update((page.number, page) for page in pool.map(read, images))
+    return results
+
+
+def _failed(
+    number: int, method: Method, code: ErrorCode, message: str, model: str | None = None
+) -> Page:
     return Page(
         number=number,
         status="failed",
         method=method,
+        model=model,
         error=PageError(code=code, message=message or code),
     )

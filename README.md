@@ -75,11 +75,13 @@ Interactive OpenAPI docs are served at `/docs` (schema at `/openapi.json`).
 
 **Endpoint:** `/v1/extract` **Method:** POST
 
-Read a PDF page by page and return Markdown or JSON. Each page says how it was read: `text_layer` (the PDF's own text) or `tesseract` (OCR, with a 0 to 1 confidence).
+Read a PDF page by page and return Markdown or JSON. Each page says how it was read: `text_layer` (the PDF's own text), `tesseract` (OCR, with a 0 to 1 confidence) or `vision` (a vision model, named in `model`).
 
 - `file`: PDF file
 - `format` (optional): `markdown` (default) or `json`.
 - `pages` (optional): 1-based pages to read, such as `1-3,5`. Defaults to every page.
+- `method` (optional): `auto` (default) uses the text layer when it is usable, else the vision model if the operator configured one, else Tesseract. `text_layer`, `tesseract` or `vision` reads every page that way.
+- `model` (optional): the vision model to use, from the operator's `OCR_LLM_ALLOWED_MODELS`. Defaults to `OCR_LLM_DEFAULT_MODEL`. Any other model is refused with 400 `model_not_allowed`, and `method=vision` with no vision model configured is refused with 400 `vision_not_configured`.
 
 ```bash
 curl -F file=@document.pdf -F format=json -F pages=1-2 localhost:5000/v1/extract
@@ -91,7 +93,7 @@ A page that could not be read is returned as `failed`, with an error code and me
 
 **Endpoint:** `/ocr` **Method:** POST
 
-Kept for users of 0.0.1. Returns `{"text": ..., "failed_pages": [...]}`: the text of every page that was read, and the pages that failed. The 0.0.1 `model`, `threshold_value`, `kernel_width`, `kernel_height` and `min_area` fields are ignored, and no model is downloaded. Use `/v1/extract` instead.
+Kept for users of 0.0.1. Returns `{"text": ..., "failed_pages": [...]}`: the text of every page that was read, and the pages that failed. The 0.0.1 `model`, `threshold_value`, `kernel_width`, `kernel_height` and `min_area` fields are ignored, and no model is downloaded. Pages are routed as `method=auto` on `/v1/extract`. Use `/v1/extract` instead.
 
 - `file`: PDF file
 
