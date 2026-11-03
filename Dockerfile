@@ -10,8 +10,16 @@ RUN uv sync --locked --no-dev --no-editable
 
 # Second stage: create the final image
 FROM python:3.12-slim
+# Tesseract with English data (a dependency of tesseract-ocr). No model is baked in.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd --system --uid 10001 --no-create-home app
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+USER app
 EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
 CMD ["uvicorn", "llm_pdf_ocr.app:app", "--host", "0.0.0.0", "--port", "5000"]
