@@ -31,6 +31,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked
+      - name: Install chromium for the browser tests
+        run: uv run playwright install --with-deps chromium
       - name: Tests with 80% coverage gate
         run: uv run pytest
 
