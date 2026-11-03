@@ -508,9 +508,8 @@ def test_a_finished_job_serves_a_png_of_each_page(store):
         assert response.headers["content-type"] == "image/png"
         assert response.content.startswith(PNG_SIGNATURE)
         image = pymupdf.Pixmap(response.content)
-        # A US Letter page (612 x 792 pt) keeps its shape.
-        assert image.width > 0
-        assert abs(image.width / image.height - 612 / 792) < 0.01
+        # An A4 page (595 x 842 pt) at 100 DPI.
+        assert (image.width, image.height) == (827, 1170)
 
 
 def test_each_page_image_is_of_its_own_page(store):
@@ -575,6 +574,17 @@ def test_page_images_are_held_while_the_job_runs(store, monkeypatch):
     assert page_png(job_id, 2).content.startswith(PNG_SIGNATURE)
     gate.release.release()
     finished(store, job_id)
+
+
+def test_a_huge_page_image_is_capped_on_its_longer_side(store):
+    doc = pymupdf.open()
+    doc.new_page(width=14400, height=7200)  # 200 x 100 inches
+    data = doc.tobytes()
+    doc.close()
+    job_id = submit(data).json()["id"]
+    finished(store, job_id)
+    image = pymupdf.Pixmap(page_png(job_id, 1).content)
+    assert (image.width, image.height) == (1600, 800)
 
 
 def test_page_images_are_not_cached_by_the_browser(store):
