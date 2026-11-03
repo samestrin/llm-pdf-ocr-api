@@ -5,4 +5,6 @@ This package is licensed under the MIT License (see LICENSE for details)
 GitHub: https://github.com/samestrin/llm-pdf-ocr-api
 """
 
-__version__ = "0.0.1"
+from importlib.metadata import version
+
+__version__ = version("llm-pdf-ocr-api")

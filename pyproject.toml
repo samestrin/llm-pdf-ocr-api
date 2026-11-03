@@ -1,6 +1,6 @@
 [project]
 name = "llm-pdf-ocr-api"
-version = "0.0.1"
+version = "1.0.0"
 description = "Self-hosted service that turns PDFs, scanned or not, into clean text."
 readme = "README.md"
 license = "MIT"
