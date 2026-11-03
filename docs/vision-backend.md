@@ -16,7 +16,7 @@ All settings are environment variables, read once when the service starts. A bad
 | `OCR_LLM_API_KEY` | none | Sent as `Authorization: Bearer <key>`. Leave unset for an endpoint that needs no key. |
 | `OCR_LLM_TIMEOUT_SECONDS` | `60` | How long to wait for one page. |
 | `OCR_LLM_CONCURRENCY` | `2` | Most pages in flight at once, across all requests. |
-| `OCR_LLM_FALLBACK_TO_TESSERACT` | `false` | Whether a page the model cannot read may be read with Tesseract instead. Read and checked at start; for now a page the model cannot read is always returned as `failed` with `vision_failed`. |
+| `OCR_LLM_FALLBACK_TO_TESSERACT` | `false` | Whether a page the model cannot read may be read with Tesseract instead. When `false`, a page the model cannot read (timeout, HTTP 429, another error or a bad reply) is returned as `failed` with `vision_failed` and the reason in its message. When `true`, Tesseract reads it instead and the page's `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the model and the reason. |
 
 Each page is rendered at 150 DPI and sent as a PNG with a fixed prompt. Callers cannot change the prompt.
 

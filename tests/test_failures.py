@@ -1,3 +1,4 @@
+# ruff: noqa: F811  (`server` is a fixture imported from test_vision)
 """A vision model that times out, is rate limited or sends a bad reply.
 
 The page is failed with its reason, or, only when the operator allows it, read by
@@ -7,8 +8,10 @@ Tesseract instead and marked as a fallback. Tests use the fake OpenAI-compatible
 import json
 import logging
 
+import jsonschema
 import pytest
 from fastapi.testclient import TestClient
+from test_extract import JSON_SCHEMA
 from test_routing import MIXED, SCAN
 from test_vision import API_KEY, MODEL, assert_no_secrets, server  # noqa: F401  (fixture)
 
@@ -105,7 +108,7 @@ def test_with_fallback_allowed_tesseract_reads_the_page(server, tesseract, failu
 def test_fallback_applies_to_a_forced_vision_method_too(server, tesseract):
     config = server.config(fallback_to_tesseract=True, **rate_limited(server))
 
-    doc = extract_pdf(MIXED, method=MethodChoice.VISION, vision=config)
+    doc = extract_pdf(MIXED, pages="1-2", method=MethodChoice.VISION, vision=config)
 
     assert [p.method for p in doc.pages] == [Method.TESSERACT, Method.TESSERACT]
     assert all(p.fallback is not None for p in doc.pages)
@@ -126,9 +129,7 @@ def test_a_page_that_cannot_be_rendered_falls_back_too(server, tesseract, monkey
 
     monkeypatch.setattr(extract.vision_model, "render_page", render)
 
-    (page,) = extract_pdf(
-        MIXED, pages=SCAN, vision=server.config(fallback_to_tesseract=True)
-    ).pages
+    (page,) = extract_pdf(MIXED, pages=SCAN, vision=server.config(fallback_to_tesseract=True)).pages
 
     assert page.method == Method.TESSERACT
     assert page.fallback.error.message == "the page could not be rendered"
@@ -156,7 +157,10 @@ def test_when_the_fallback_fails_too_the_page_is_failed_with_both_reasons(server
 def test_json_states_the_fallback(server, tesseract):
     config = server.config(fallback_to_tesseract=True, **rate_limited(server))
 
-    pages = json.loads(render_json(extract_pdf(MIXED, pages="1-2", vision=config)))["pages"]
+    payload = json.loads(render_json(extract_pdf(MIXED, pages="1-2", vision=config)))
+    pages = payload["pages"]
+
+    jsonschema.validate(payload, JSON_SCHEMA)
 
     assert pages[0]["fallback"] is None
     assert pages[1]["method"] == "tesseract"
@@ -189,7 +193,7 @@ def test_markdown_states_the_fallback(server, tesseract):
 client = TestClient(app)
 
 
-def post(server, **form):
+def post(**form):
     files = {"file": ("doc.pdf", MIXED, "application/pdf")}
     return client.post("/v1/extract", files=files, data={"format": "json", **form})
 
@@ -203,8 +207,8 @@ def test_api_failures_never_leak_the_key_or_url(
     app.dependency_overrides[get_vision_config] = lambda: config
 
     with caplog.at_level(logging.DEBUG):
-        json_reply = post(server, pages="1-2")
-        md_reply = post(server, pages="1-2", format="markdown")
+        json_reply = post(pages="1-2")
+        md_reply = post(pages="1-2", format="markdown")
 
     assert json_reply.status_code == md_reply.status_code == 200
     page = json_reply.json()["pages"][1]

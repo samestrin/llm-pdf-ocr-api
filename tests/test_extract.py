@@ -22,6 +22,24 @@ MIXED = (FIXTURES / "mixed.pdf").read_bytes()
 BORN_DIGITAL = (FIXTURES / "born_digital.pdf").read_bytes()
 
 # Written by hand, not generated from the models, so a model change that breaks the contract fails.
+ERROR_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["code", "message"],
+    "properties": {
+        "code": {
+            "enum": [
+                "text_layer_failed",
+                "ocr_failed",
+                "tesseract_not_found",
+                "no_text_layer",
+                "vision_failed",
+            ]
+        },
+        "message": {"type": "string", "minLength": 1},
+    },
+}
+
 JSON_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -34,7 +52,16 @@ JSON_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["page", "status", "method", "model", "text", "confidence", "error"],
+                "required": [
+                    "page",
+                    "status",
+                    "method",
+                    "model",
+                    "text",
+                    "confidence",
+                    "error",
+                    "fallback",
+                ],
                 "properties": {
                     "page": {"type": "integer", "minimum": 1},
                     "status": {"enum": ["ok", "failed"]},
@@ -42,25 +69,18 @@ JSON_SCHEMA = {
                     "model": {"type": ["string", "null"]},
                     "text": {"type": "string"},
                     "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-                    "error": {
+                    "error": {"oneOf": [{"type": "null"}, ERROR_SCHEMA]},
+                    "fallback": {
                         "oneOf": [
                             {"type": "null"},
                             {
                                 "type": "object",
                                 "additionalProperties": False,
-                                "required": ["code", "message"],
+                                "required": ["method", "model", "error"],
                                 "properties": {
-                                    "code": {
-                                        "enum": [
-                                            "text_layer_failed",
-                                            "ocr_failed",
-                                            "tesseract_not_found",
-                                            "no_text_layer",
-                                            "vision_failed",
-                                            "page_timeout",
-                                        ]
-                                    },
-                                    "message": {"type": "string", "minLength": 1},
+                                    "method": {"enum": ["vision"]},
+                                    "model": {"type": ["string", "null"]},
+                                    "error": ERROR_SCHEMA,
                                 },
                             },
                         ]
