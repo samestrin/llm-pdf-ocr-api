@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import jsonschema
+import pymupdf
 import pytest
 
 from llm_pdf_ocr import extract
@@ -270,3 +271,19 @@ def test_markdown_carries_the_text_of_every_ok_page(monkeypatch):
     for page in doc.pages:
         section = md.split(f"## Page {page.number}\n")[1].split("\n## Page ")[0]
         assert page.text.strip() and page.text in section
+
+
+def test_unexpected_ocr_exception_fails_only_that_page(monkeypatch):
+    fake_ocr(
+        monkeypatch, fail_on=[2], exc=pymupdf.FileDataError("corrupt page render /secret/path")
+    )
+
+    doc = extract_pdf(MIXED)
+
+    page = doc.pages[1]
+    assert page.status == "failed" and page.method == Method.TESSERACT
+    assert page.text == "" and page.confidence is None
+    assert page.error.code == ErrorCode.OCR_FAILED
+    assert "secret" not in page.error.message
+    assert doc.failed_pages == [2]
+    assert doc.pages[0].status == "ok"

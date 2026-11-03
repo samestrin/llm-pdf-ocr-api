@@ -139,6 +139,10 @@ def _extract_page(page, language: str) -> Page:
         return _failed(number, Method.TESSERACT, ErrorCode.TESSERACT_NOT_FOUND, str(exc))
     except OcrError as exc:
         return _failed(number, Method.TESSERACT, ErrorCode.OCR_FAILED, str(exc))
+    except Exception:  # e.g. a page that cannot be rendered; the message stays generic
+        return _failed(
+            number, Method.TESSERACT, ErrorCode.OCR_FAILED, "the page could not be recognised"
+        )
     return Page(
         number=number,
         status="ok",
