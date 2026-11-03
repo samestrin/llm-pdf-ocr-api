@@ -122,6 +122,21 @@ def test_blank_and_unrecognised_words_are_ignored(monkeypatch):
     assert result.confidence == pytest.approx(0.9)
 
 
+def test_short_rows_and_non_word_rows_are_skipped(monkeypatch):
+    fake_tesseract(
+        monkeypatch,
+        HEADER
+        + "5\t1\n"
+        + tsv_row(4, 1, 1, 1, 0, 88, "line level row with a real confidence")
+        + tsv_row(5, 1, 1, 1, 1, 90, "kept"),
+    )
+
+    result = ocr_page(blank_page())
+
+    assert result.text == "kept"
+    assert result.confidence == pytest.approx(0.9)
+
+
 def test_page_number_is_one_based(monkeypatch):
     fake_tesseract(monkeypatch, HEADER)
     doc = pymupdf.open()
@@ -149,6 +164,13 @@ def test_tesseract_failure_carries_its_message(monkeypatch):
 
     with pytest.raises(OcrError, match="Failed loading language"):
         ocr_page(blank_page(), language="xx")
+
+
+def test_tesseract_failure_without_a_message_still_says_it_failed(monkeypatch):
+    fake_tesseract(monkeypatch, returncode=1, stderr="")
+
+    with pytest.raises(OcrError, match="tesseract failed"):
+        ocr_page(blank_page())
 
 
 def test_tesseract_timeout_is_an_ocr_error(monkeypatch):
