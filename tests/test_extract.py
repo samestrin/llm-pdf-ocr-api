@@ -34,6 +34,7 @@ ERROR_SCHEMA = {
                 "tesseract_not_found",
                 "no_text_layer",
                 "vision_failed",
+                "page_timeout",
             ]
         },
         "message": {"type": "string", "minLength": 1},

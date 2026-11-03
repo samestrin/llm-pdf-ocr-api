@@ -50,13 +50,19 @@ FAILURES = [
 ]
 
 
+timeouts: list[float | None] = []
+
+
 @pytest.fixture
 def tesseract(monkeypatch):
-    """A fake Tesseract that records the pages it read."""
+    """A fake Tesseract that records the pages it read (and, in `timeouts`, the time
+    it was given for each)."""
+    timeouts.clear()
     seen = []
 
-    def ocr(page, language="eng"):
+    def ocr(page, language="eng", timeout=None):
         seen.append(page.number + 1)
+        timeouts.append(timeout)
         return OcrResult(number=page.number + 1, text="ocr text", confidence=0.8)
 
     monkeypatch.setattr(extract, "ocr_page", ocr)
@@ -136,8 +142,17 @@ def test_a_page_that_cannot_be_rendered_falls_back_too(server, tesseract, monkey
     assert server.requests == []
 
 
+def test_the_fallback_gets_the_per_page_tesseract_timeout(server, tesseract):
+    config = server.config(fallback_to_tesseract=True, **rate_limited(server))
+
+    extract_pdf(MIXED, pages=SCAN, vision=config, page_timeout=7.5)
+
+    assert tesseract == [int(SCAN)]
+    assert timeouts == [7.5]
+
+
 def test_when_the_fallback_fails_too_the_page_is_failed_with_both_reasons(server, monkeypatch):
-    def ocr(page, language="eng"):
+    def ocr(page, language="eng", timeout=None):
         raise OcrError("tesseract could not read the page")
 
     monkeypatch.setattr(extract, "ocr_page", ocr)
