@@ -52,7 +52,7 @@ Everything is an environment variable; none is required.
 | `OCR_LLM_API_KEY` | empty | Bearer key for the endpoint. |
 | `OCR_LLM_TIMEOUT_SECONDS` | 60 | Per-request timeout to the vision endpoint. |
 | `OCR_LLM_CONCURRENCY` | 2 | Vision requests in flight at once. |
-| `OCR_LLM_FALLBACK_TO_TESSERACT` | false | Read a page with Tesseract when the vision model fails it. |
+| `OCR_LLM_FALLBACK_TO_TESSERACT` | false (true in `docker-compose.yml`) | Read a page with Tesseract when the vision model fails it. |
 | `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. |
 | `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. |
 | `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
@@ -107,7 +107,7 @@ A page that could not be read is returned as `failed`, with an error code and me
 
 To read scanned pages with a vision model, local or in the cloud, see [Vision model backend](docs/vision-backend.md). With none configured, scanned pages are read with Tesseract.
 
-If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
+If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default; `docker-compose.yml` turns it on unless you set it), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
 
 ### Jobs
 
