@@ -132,3 +132,10 @@ def test_page_assets_are_404_when_the_page_is_off(page_off):
 def test_api_still_answers_when_the_page_is_off(page_off):
     assert client.get("/health").status_code == 200
     assert client.get("/v1/capabilities").status_code == 200
+
+
+def test_page_script_never_writes_html():
+    script = (WEB / "app.js").read_text()
+
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert sink not in script, sink

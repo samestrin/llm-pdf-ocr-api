@@ -185,6 +185,7 @@ def test_an_expired_job_shows_an_error_never_an_empty_result(live_server, page):
     expect(page.locator(".page-result")).to_have_count(0)
     expect(page.locator("#result")).to_be_hidden()
     expect(page.locator("#progress")).to_be_hidden()
+    expect(page.locator("#submit")).to_be_enabled()
 
 
 def test_a_page_image_that_is_gone_says_so(live_server, page):
