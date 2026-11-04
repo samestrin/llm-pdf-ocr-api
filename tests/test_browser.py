@@ -287,3 +287,54 @@ def test_a_page_image_that_is_gone_says_so(live_server, page):
     expect(card.locator(".no-image")).to_have_text("Image not available")
     expect(card.locator("img")).to_have_count(0)
     expect(card.locator(".text")).to_have_text(PAGE_ONE)
+
+
+def _result_doc(live_server, page, fmt="markdown"):
+    data = _pdf(PAGE_ONE, PAGE_TWO)
+    _extract(page, live_server, data, fmt=fmt)
+    _done(page)
+    return extract_pdf(data, method=MethodChoice.TEXT_LAYER)
+
+
+def test_copy_puts_the_markdown_on_the_clipboard(live_server, page):
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=live_server)
+    doc = _result_doc(live_server, page, fmt="json")  # copy is Markdown whatever is shown
+    page.click("#copy")
+
+    expect(page.locator("#status")).to_have_text("Markdown copied.")
+    assert page.evaluate("navigator.clipboard.readText()") == render_markdown(doc)
+
+
+def test_each_download_delivers_a_file_with_the_matching_content(live_server, page):
+    doc = _result_doc(live_server, page)
+
+    with page.expect_download() as info:
+        page.click("#download-md")
+    md = info.value
+    assert md.suggested_filename == "result.md"
+    assert open(md.path(), encoding="utf-8").read() == render_markdown(doc)
+
+    with page.expect_download() as info:
+        page.click("#download-json")
+    js = info.value
+    assert js.suggested_filename == "result.json"
+    assert json.load(open(js.path(), encoding="utf-8")) == json.loads(render_json(doc))
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_both_themes_apply(live_server, page, scheme):
+    page.emulate_media(color_scheme=scheme)
+    page.goto(live_server + "/")
+    background = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    assert background == {"light": "rgb(247, 247, 245)", "dark": "rgb(22, 22, 24)"}[scheme]
+
+
+def test_no_horizontal_scroll_at_phone_width(live_server, page):
+    page.set_viewport_size({"width": 375, "height": 800})
+    _extract(page, live_server, _pdf(PAGE_ONE, "x" * 400))
+    _done(page)
+
+    widths = page.evaluate(
+        "[document.documentElement.scrollWidth, document.documentElement.clientWidth]"
+    )
+    assert widths[0] <= widths[1] == 375

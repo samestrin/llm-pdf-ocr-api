@@ -142,13 +142,46 @@ function markdown(doc) {
   return sections.join("\n\n") + "\n";
 }
 
+let current = null; // the finished document, for copy and download
+
+function download(name, type, text) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = el("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function copyMarkdown() {
+  if (!current) return;
+  try {
+    await navigator.clipboard.writeText(markdown(current));
+    showStatus("Markdown copied.");
+  } catch (_) {
+    showStatus("Could not copy to the clipboard.", true);
+  }
+}
+
+$("copy").addEventListener("click", copyMarkdown);
+$("download-md").addEventListener("click", () => {
+  if (current) download("result.md", "text/markdown", markdown(current));
+});
+$("download-json").addEventListener("click", () => {
+  if (current) download("result.json", "application/json", JSON.stringify(current, null, 2));
+});
+
 function showResult(jobId, doc, format) {
+  current = doc;
   pageList.replaceChildren(...doc.pages.map((page) => pageCard(jobId, page)));
   result.textContent = format === "json" ? JSON.stringify(doc, null, 2) : markdown(doc);
   results.hidden = false;
 }
 
 function clearResult() {
+  current = null;
   results.hidden = true;
   pageList.replaceChildren();
   result.textContent = "";
