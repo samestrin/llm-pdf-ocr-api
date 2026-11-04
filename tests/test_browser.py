@@ -289,6 +289,24 @@ def test_a_page_image_that_is_gone_says_so(live_server, page):
     expect(card.locator(".text")).to_have_text(PAGE_ONE)
 
 
+def test_a_page_past_the_image_budget_says_so_and_shows_its_text(live_server, page):
+    saved = app.state.jobs
+    app.state.jobs = JobStore(max_jobs=3, ttl=60, max_image_bytes=1)  # no page image fits
+    try:
+        _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+        _done(page)
+    finally:
+        app.state.jobs.shutdown()
+        app.state.jobs = saved
+
+    cards = page.locator(".page-result")
+    expect(cards).to_have_count(2)
+    for n, text in enumerate((PAGE_ONE, PAGE_TWO)):
+        expect(cards.nth(n).locator(".no-image")).to_have_text("Image not available")
+        expect(cards.nth(n).locator("img")).to_have_count(0)
+        expect(cards.nth(n).locator(".text")).to_have_text(text)
+
+
 def _result_doc(live_server, page, fmt="markdown"):
     data = _pdf(PAGE_ONE, PAGE_TWO)
     _extract(page, live_server, data, fmt=fmt)
