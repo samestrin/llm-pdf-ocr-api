@@ -58,6 +58,7 @@ Everything is an environment variable; none is required.
 | `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
 | `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. |
 | `OCR_MAX_JOBS` | 20 | Jobs held at once. |
+| `OCR_MAX_IMAGE_MB` | 200 | Memory all held jobs may use for page images, together. Past it, a job still reads every page but renders no more images. |
 | `OCR_WEB_PAGE` | true | Serve the web page at `/`. Set `false` for an API-only deployment: `/` and its files answer 404. |
 
 Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
@@ -122,7 +123,7 @@ curl localhost:5000/v1/jobs/<id>
 curl -o page1.png localhost:5000/v1/jobs/<id>/pages/1.png
 ```
 
-While a job runs it renders each page it reads as a PNG (100 DPI, longer side at most 1600 px), served at `GET /v1/jobs/{id}/pages/{n}.png`. A page the job does not read, or has not rendered yet, answers 404 `page_not_found`.
+While a job runs it renders each page it reads as a PNG (100 DPI, longer side at most 1600 px), served at `GET /v1/jobs/{id}/pages/{n}.png`. A page the job does not read, or has not rendered yet, answers 404 `page_not_found`. So does a page past `OCR_MAX_IMAGE_MB` (default 200): the images of every held job count against it together, a job that reaches it renders no more images (it still reads every page, and the web page shows "Image not available" beside that page's text), and a job's images count until it expires.
 
 Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result and page images `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
 

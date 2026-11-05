@@ -22,6 +22,7 @@ from llm_pdf_ocr.app import app
 from llm_pdf_ocr.config import ConfigError, JobSettings, VisionConfig, load_job_settings
 from llm_pdf_ocr.extract import MethodChoice, extract_pdf
 from llm_pdf_ocr.jobs import JobStore, TooManyJobsError
+from llm_pdf_ocr.pdf import render_page_image
 
 ROOT = Path(__file__).parent.parent
 MIXED = (Path(__file__).parent / "fixtures" / "mixed.pdf").read_bytes()
@@ -118,10 +119,26 @@ def test_bad_job_settings_raise(name, value):
         load_job_settings({name: value})
 
 
+def test_page_images_are_capped_at_200_mb_by_default():
+    assert load_job_settings({}).max_image_bytes == 200 * 1024 * 1024
+
+
+def test_the_page_image_budget_is_read_from_the_environment():
+    settings = load_job_settings({"OCR_MAX_IMAGE_MB": "1.5"})
+    assert settings.max_image_bytes == int(1.5 * 1024 * 1024)
+
+
+@pytest.mark.parametrize("value", ["lots", "0", "-2"])
+def test_a_bad_page_image_budget_raises(value):
+    with pytest.raises(ConfigError, match="OCR_MAX_IMAGE_MB"):
+        load_job_settings({"OCR_MAX_IMAGE_MB": value})
+
+
 def test_the_app_holds_jobs_with_the_settings_from_the_environment():
     settings = load_job_settings()
     assert app.state.jobs.max_jobs == settings.max_jobs
     assert app.state.jobs.ttl == settings.ttl
+    assert app.state.jobs.max_image_bytes == settings.max_image_bytes
 
 
 def test_the_dockerfile_runs_a_single_uvicorn_worker():
@@ -639,3 +656,96 @@ def test_a_page_that_cannot_be_rendered_has_no_image_and_the_job_still_reads(sto
     assert job.status == "done"
     assert page_png(job_id, 1).status_code == 404
     assert page_png(job_id, 2).status_code == 200
+
+
+# The page image budget
+
+
+def png_sizes(data: bytes) -> list[int]:
+    """The size of each page's image, as the job renders it."""
+    with pymupdf.open(stream=data) as doc:
+        return [len(render_page_image(page)) for page in doc]
+
+
+@pytest.fixture
+def budget_store(clock):
+    """Install a job store whose page images may hold at most `max_image_bytes` bytes."""
+    saved = app.state.jobs
+
+    def install(max_image_bytes: int) -> JobStore:
+        app.state.jobs = JobStore(max_jobs=3, ttl=60, clock=clock, max_image_bytes=max_image_bytes)
+        return app.state.jobs
+
+    yield install
+    if app.state.jobs is not saved:
+        app.state.jobs.shutdown()
+    app.state.jobs = saved
+
+
+def held_image_bytes(*held) -> int:
+    return sum(len(png) for job in held for png in job.images.values())
+
+
+def test_a_job_over_the_budget_reads_every_page_but_holds_images_only_up_to_it(budget_store):
+    data = text_pdf(4)
+    sizes = png_sizes(data)
+    store = budget_store(sizes[0] + sizes[1] + sizes[2] // 2)  # room for two pages and a half
+    job_id = submit(data, format="json").json()["id"]
+    job = finished(store, job_id)
+
+    body = client.get(f"/v1/jobs/{job_id}").json()
+    assert body["status"] == "done"
+    assert [p["status"] for p in body["result"]["pages"]] == ["ok"] * 4
+    assert all(p["text"] for p in body["result"]["pages"])
+    assert sorted(job.images) == [1, 2]
+    assert held_image_bytes(job) <= store.max_image_bytes
+    for n in (1, 2):
+        assert page_png(job_id, n).status_code == 200
+    for n in (3, 4):
+        response = page_png(job_id, n)
+        assert response.status_code == 404
+        assert without_request_id(response) == {
+            "error": {"code": "page_not_found", "message": f"this job has no image of page {n}"}
+        }
+
+
+def test_past_the_budget_no_more_pages_are_rendered(budget_store, monkeypatch):
+    data = text_pdf(5)
+    store = budget_store(png_sizes(data)[0])
+    rendered = []
+    real = api.render_page_image
+
+    def render(page):
+        rendered.append(page.number + 1)
+        return real(page)
+
+    monkeypatch.setattr(api, "render_page_image", render)
+    job = finished(store, submit(data).json()["id"])
+    assert sorted(job.images) == [1]
+    assert rendered == [1, 2]  # page 2 did not fit, so pages 3 to 5 were never rendered
+
+
+def test_the_budget_is_shared_by_every_job_held(budget_store):
+    data = text_pdf(2)
+    store = budget_store(sum(png_sizes(data)))
+    first = finished(store, submit(data).json()["id"])
+    second = finished(store, submit(data).json()["id"])
+    assert sorted(first.images) == [1, 2]
+    assert second.images == {}
+    assert held_image_bytes(first, second) <= store.max_image_bytes
+
+
+def test_an_expired_job_gives_its_image_bytes_back(budget_store, clock):
+    data = text_pdf(2)
+    store = budget_store(sum(png_sizes(data)))
+    first = finished(store, submit(data).json()["id"])
+    clock.now += store.ttl
+    assert store.get(first.id) is None
+    later = finished(store, submit(data).json()["id"])
+    assert sorted(later.images) == [1, 2]
+
+
+def test_a_store_without_a_budget_holds_every_image(store):
+    job = finished(store, submit(text_pdf(3)).json()["id"])
+    assert store.max_image_bytes is None
+    assert sorted(job.images) == [1, 2, 3]

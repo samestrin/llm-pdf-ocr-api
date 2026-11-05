@@ -14,6 +14,7 @@ DEFAULT_MAX_PAGES = 500
 DEFAULT_PAGE_TIMEOUT = 120.0
 DEFAULT_JOB_TTL = 3600.0
 DEFAULT_MAX_JOBS = 20
+DEFAULT_MAX_IMAGE_MB = 200
 _MiB = 1024 * 1024
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -39,10 +40,12 @@ class Limits:
 
 @dataclass(frozen=True)
 class JobSettings:
-    """How long a finished job's result is kept, and how many jobs are held at once."""
+    """How long a finished job's result is kept, how many jobs are held at once, and how
+    many bytes of page images all held jobs may keep between them."""
 
     ttl: float = DEFAULT_JOB_TTL
     max_jobs: int = DEFAULT_MAX_JOBS
+    max_image_bytes: int = DEFAULT_MAX_IMAGE_MB * _MiB
 
 
 @dataclass(frozen=True)
@@ -106,11 +109,13 @@ def load_limits(env: Mapping[str, str] | None = None) -> Limits:
 
 
 def load_job_settings(env: Mapping[str, str] | None = None) -> JobSettings:
-    """Read OCR_JOB_TTL_SECONDS and OCR_MAX_JOBS."""
+    """Read OCR_JOB_TTL_SECONDS, OCR_MAX_JOBS and OCR_MAX_IMAGE_MB."""
     env = os.environ if env is None else env
+    max_image_mb = _number(env, "OCR_MAX_IMAGE_MB", DEFAULT_MAX_IMAGE_MB, float)
     return JobSettings(
         ttl=_number(env, "OCR_JOB_TTL_SECONDS", DEFAULT_JOB_TTL, float),
         max_jobs=_number(env, "OCR_MAX_JOBS", DEFAULT_MAX_JOBS, int),
+        max_image_bytes=int(max_image_mb * _MiB),
     )
 
 

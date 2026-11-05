@@ -13,7 +13,9 @@ the result when done. Jobs live in this process's memory (`llm_pdf_ocr.jobs`), s
 the service runs a single uvicorn worker. Over `OCR_MAX_JOBS` held jobs, `POST`
 answers 429; a job finished more than `OCR_JOB_TTL_SECONDS` ago is gone (404).
 While a job runs it renders each selected page as a PNG, served at
-`GET /v1/jobs/{id}/pages/{n}.png` and dropped with the result.
+`GET /v1/jobs/{id}/pages/{n}.png` and dropped with the result. The images of all
+held jobs keep at most `OCR_MAX_IMAGE_MB` between them; past that a job renders
+no more, and its later pages have no image (404 `page_not_found`).
 
 `GET /` is a page for using the service from a browser (files in `llm_pdf_ocr/web/`,
 served with `Content-Security-Policy: default-src 'self'`, so it loads nothing from
@@ -88,7 +90,11 @@ app = FastAPI(
 app.state.limits = load_limits()
 app.state.web_page = load_web_page()
 _job_settings = load_job_settings()
-app.state.jobs = JobStore(max_jobs=_job_settings.max_jobs, ttl=_job_settings.ttl)
+app.state.jobs = JobStore(
+    max_jobs=_job_settings.max_jobs,
+    ttl=_job_settings.ttl,
+    max_image_bytes=_job_settings.max_image_bytes,
+)
 app.add_middleware(UploadCap)
 app.add_middleware(RequestLog)  # added last, so it is outermost
 
@@ -338,13 +344,21 @@ def create_job(
 
 
 def _render_images(data: bytes, numbers: list[int], job: Job) -> None:
-    """Render each page the job reads, for the web page to show beside its text."""
+    """Render each page the job reads, for the web page to show beside its text.
+
+    Stops at the first image that does not fit the image budget: the pages are
+    still read, and the later ones have no image.
+    """
     with open_pdf(data) as doc:
         for n in numbers:
             try:
-                job.images[n] = render_page_image(doc[n - 1])
+                png = render_page_image(doc[n - 1])
             except Exception:  # the page is still read; it just has no image
                 log.warning("page %d: could not render its image", n)
+                continue
+            if not job.add_image(n, png):
+                log.warning("page images are over OCR_MAX_IMAGE_MB: page %d on has none", n)
+                return
 
 
 @app.get(
