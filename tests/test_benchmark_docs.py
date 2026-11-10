@@ -63,3 +63,9 @@ def test_the_readme_gives_the_owner_the_exact_vision_steps():
         "uv run python benchmarks/run.py",
     ):
         assert step in README
+
+
+def test_the_vision_endpoint_in_the_readme_is_published_by_the_compose_file():
+    compose = (ROOT / "docker-compose.yml").read_text()
+    assert "OCR_LLM_BASE_URL=http://localhost:11434/v1" in README
+    assert '"127.0.0.1:11434:11434"' in compose.split("ollama:", 1)[1]

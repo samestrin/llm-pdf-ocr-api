@@ -28,6 +28,9 @@ services:
   ollama:
     profiles: ["vision"]
     image: ollama/ollama:latest
+    # Published on loopback only, so the benchmark run on the host can reach it.
+    ports:
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
