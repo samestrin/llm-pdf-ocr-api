@@ -22,7 +22,7 @@ cd llm-pdf-ocr-api
 docker compose up --build
 ```
 
-Open <http://localhost:5000> and drop in `tests/fixtures/born_digital.pdf`, a one-page PDF with a text layer. The page shows its text and says it was read by `text_layer`.
+Open <http://localhost:5000> and drop in `tests/fixtures/born_digital.pdf`, a two-page PDF with a text layer. The pages show their text and say they were read by `text_layer`.
 
 Or send the same file with `curl` from a second terminal:
 
