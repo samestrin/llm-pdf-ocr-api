@@ -81,3 +81,23 @@ def test_every_action_is_pinned_to_a_commit_sha():
     assert uses
     for ref in uses:
         assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
+
+
+def changelog_sections() -> dict[str, str]:
+    text = (ROOT / "CHANGELOG.md").read_text()
+    parts = re.split(r"^## ", text, flags=re.MULTILINE)[1:]
+    return {part.splitlines()[0]: part.split("\n", 1)[1] for part in parts}
+
+
+def test_changelog_has_a_1_0_0_section_with_the_release_workflow_entry():
+    sections = changelog_sections()
+    (heading,) = [h for h in sections if h.startswith(VERSION)]
+    assert re.fullmatch(rf"{re.escape(VERSION)} \(\d{{4}}-\d{{2}}-\d{{2}}\)", heading)
+    assert "Release workflow (`.github/workflows/release.yml`)" in sections[heading]
+
+
+def test_changelog_unreleased_is_empty_and_top_version_is_pyproject_version():
+    sections = changelog_sections()
+    assert sections["Unreleased"].strip() == ""
+    top = [h for h in sections if h != "Unreleased"][0]
+    assert top.split()[0] == VERSION

@@ -1,6 +1,6 @@
 # Release notes: 1.0.0 (draft for the owner)
 
-Status: draft. No tag has been pushed. The tag and the public post are the owner's.
+Status: ready for the owner. The version and CHANGELOG are done (CHANGELOG dated 2026-11-10); no tag has been pushed. The tag, the public package and the post are the owner's.
 
 ## Image
 
@@ -31,20 +31,15 @@ Full list: [CHANGELOG.md](../CHANGELOG.md).
 - The server is uvicorn on port 5000 (it was gunicorn) and runs as a non-root user. Run one worker only, because jobs are held in memory.
 - Install with `uv sync`; `src/requirements.txt` and `.version` are gone.
 
-## Before announcing
+## Done in the repository
 
-1. **Benchmark against a vision model.** The committed results in `benchmarks/results/` do not measure vision. Run it once and commit the result file:
+1. **Version and CHANGELOG.** `pyproject.toml` says `1.0.0`, and the CHANGELOG's former Unreleased entries are merged into one dated `1.0.0` section; Unreleased is empty. A test checks the top version equals `pyproject.toml`'s.
+2. **Benchmark steps prepared.** The README gives the local Ollama steps for the vision benchmark row, and `docker-compose.yml` publishes Ollama on loopback only. The committed results in `benchmarks/results/` still do not measure vision: that run was not done, and the README table says so until it is.
+3. **Web page, "Try it" and screenshots.** The page has empty, rejected-upload and network-down states, and the README has a "Try it" section and light/dark, desktop/phone screenshots made by `docs/make_screenshots.py`.
 
-   ```sh
-   export OCR_LLM_BASE_URL=...        # an OpenAI-compatible endpoint
-   export OCR_LLM_API_KEY=...
-   export OCR_LLM_DEFAULT_MODEL=...
-   uv run python benchmarks/run.py
-   git add benchmarks/results/ && git commit -m "Benchmark results with a vision model"
-   ```
+## Owner steps
 
-   The result file names the model but never the endpoint URL or key. Update the benchmark table in the README from it.
-2. **Check the version.** `pyproject.toml` must say `1.0.0`, and the CHANGELOG "Unreleased" entries should be moved under 1.0.0 if the owner wants them in this release.
-3. **Tag.** `git tag v1.0.0 && git push origin v1.0.0` publishes the image.
-4. **Make the package public.** The first publish to GHCR is private. Until the owner sets the package visibility to public (GitHub, Packages, `llm-pdf-ocr-api`, Package settings, Change visibility), `docker run ghcr.io/samestrin/llm-pdf-ocr-api` fails for everyone else with "denied". Check by pulling from a machine that is not logged in to GHCR.
-5. **Post.** Announcement text is the owner's.
+1. **Benchmark against a vision model.** Follow the README's steps, run `uv run python benchmarks/run.py` with `OCR_LLM_BASE_URL`, `OCR_LLM_API_KEY` and `OCR_LLM_DEFAULT_MODEL` set, commit the result file and update the README row. The result file names the model but never the endpoint URL or key.
+2. **Tag.** `git tag v1.0.0 && git push origin v1.0.0` publishes the image.
+3. **Make the package public.** The first publish to GHCR is private. Until the owner sets the package visibility to public (GitHub, Packages, `llm-pdf-ocr-api`, Package settings, Change visibility), `docker run ghcr.io/samestrin/llm-pdf-ocr-api` fails for everyone else with "denied". Check by pulling from a machine that is not logged in to GHCR.
+4. **Post.** Announcement text is the owner's.

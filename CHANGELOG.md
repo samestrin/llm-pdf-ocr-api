@@ -4,10 +4,20 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+## 1.0.0 (2026-11-10)
+
+The first release since 0.0.1: the service is rebuilt around a PDF's text layer and Tesseract, with an optional vision model you configure yourself. The version is set only in `pyproject.toml`; the package's `__version__` and the OpenAPI version are read from it, and the `.version` file is gone.
+
+### Changed
+
+- Web page: one set of type and spacing tokens, a visible focus ring, one card and button style, and a layout that fits 320 px wide.
+- README rewritten: what the service does, a quick start (`docker run ghcr.io/samestrin/llm-pdf-ocr-api`, or build locally), a configuration table, the committed benchmark table (vision not measured) and a "Coming from 0.0.1" section. The badge says 1.0.0. Tests check the image name and that the local build-and-run commands are the ones CI's docker job runs.
+- The project is now a `uv`-managed Python package (`pyproject.toml`, `src/llm_pdf_ocr/`) served by FastAPI. Install with `uv sync`; `src/requirements.txt` is gone. The Docker image runs `uvicorn llm_pdf_ocr.app:app` on port 5000.
+- CI on GitHub-hosted runners runs ruff, pytest with an 80% coverage gate, and a Docker build. The version-badge workflow is removed.
+
 ### Added
 
 - The README's web page section now shows a [screenshot](docs/screenshot-web-page-light-desktop.png) of the finished page: each page's image beside its text, and the full Markdown with copy and download buttons.
-
 - A web page at `/`: drop or pick a PDF, choose Markdown or JSON and a method (auto, text layer, Tesseract, and the vision model when one is configured), and read the result. Plain files in `llm_pdf_ocr/web/`, no build step and no other origin; `/` is served with `Content-Security-Policy: default-src 'self'`. CI loads the page and its assets from the container with the network off.
 - `OCR_WEB_PAGE=false` turns the web page off for an API-only deployment: `/` and `/static/` answer 404 `not_found`; the API is unchanged. On by default.
 - `GET /v1/capabilities`: the methods a request may use and the allowed vision model names, never the endpoint URL or key. The page reads it to decide whether to offer vision.
@@ -15,22 +25,12 @@ All notable changes to this project are recorded here. Add new entries under Unr
 - The web page follows the job's progress, then shows each page's image beside its text, with the method that read it and why it failed if it did, and the full Markdown or JSON below. Page text is set as text, never as HTML, so markup in a PDF is shown literally; a job that has expired (404) is shown as an error, never as an empty result.
 - `OCR_MAX_IMAGE_MB` (default 200) caps the memory page images may use, across every held job. Past it, a job still reads every page, but renders no more images: those pages answer 404 `page_not_found` and the web page shows "Image not available" beside their text. Before, up to `OCR_MAX_JOBS` × `OCR_MAX_PAGES` images could be held at once.
 - The web page can copy the Markdown to the clipboard and download the result as `result.md` or `result.json`. It follows the browser's light or dark theme and has no horizontal scroll at 375 px wide.
-
 - Release workflow (`.github/workflows/release.yml`): a `v*` tag publishes `ghcr.io/samestrin/llm-pdf-ocr-api` tagged `X.Y.Z` and `latest`, after a step that fails unless the tag equals `v` plus the `pyproject.toml` version. Only the publish job may write packages, and every action is pinned to a commit. A pull request that touches the workflow builds the image as a dry run without pushing and checks that the guard rejects a mismatched tag. CI now runs `actionlint` on the workflows.
 - [Release notes draft](docs/release-notes-1.0.0.md) for the owner: what changed, coming from 0.0.1, the image name, the private first GHCR publish and the vision benchmark step. No tag is pushed.
-
-## 1.0.0
-
-The first release since 0.0.1: the service is rebuilt around a PDF's text layer and Tesseract, with an optional vision model you configure yourself. The version is set only in `pyproject.toml`; the package's `__version__` and the OpenAPI version are read from it, and the `.version` file is gone.
-
-### Changed
-
-- README rewritten: what the service does, a quick start (`docker run ghcr.io/samestrin/llm-pdf-ocr-api`, or build locally), a configuration table, the committed benchmark table (vision not measured) and a "Coming from 0.0.1" section. The badge says 1.0.0. Tests check the image name and that the local build-and-run commands are the ones CI's docker job runs.
-- The project is now a `uv`-managed Python package (`pyproject.toml`, `src/llm_pdf_ocr/`) served by FastAPI. Install with `uv sync`; `src/requirements.txt` is gone. The Docker image runs `uvicorn llm_pdf_ocr.app:app` on port 5000.
-- CI on GitHub-hosted runners runs ruff, pytest with an 80% coverage gate, and a Docker build. The version-badge workflow is removed.
-
-### Added
-
+- README "Try it" section and a CI `try-it` job that follows it.
+- The README gives the owner's local Ollama steps for the vision benchmark row, and `docker-compose.yml` publishes Ollama on loopback only. A test ties the README's benchmark row to the newest result file. The vision row itself is still the owner's run.
+- Web page states: empty, upload rejected and network down, each with its own message; keyboard use, accessible names, a live status and contrast checked in tests.
+- README screenshots, light and dark, desktop and phone, generated by `docs/make_screenshots.py` instead of by hand.
 - `benchmarks/`: twenty public-domain or freely licensed PDFs (born-digital, two-column, tables, forms, scans, poor scans) with reference text, Markdown reference tables, and a manifest of sources and licenses. A test checks every file has a source URL, a license and reference text. `benchmarks` is excluded from the Docker build context.
 - Every response has an `X-Request-ID` header, and every error body carries the same `request_id`. Each request logs one line (method, path, status, time, id), never the file or any page text (the path is escaped); the 404, 405 and 422 framework errors now use the same `{"error": ...}` body (`not_found`, `method_not_allowed`, `invalid_request`); an unhandled failure is answered with 500 `internal_error` and logged by exception type only.
 - Benchmark runner: `uv run python benchmarks/run.py` reports, per available method (text layer, Tesseract, and the vision model when `OCR_LLM_BASE_URL` is set), character error rate, table cell F1, seconds per page and failed pages, where a document with a failed page scores 0. Results go to a dated file in `benchmarks/results/` that names the vision model but never the endpoint URL or key.
