@@ -356,3 +356,46 @@ def test_no_horizontal_scroll_at_phone_width(live_server, page):
         "[document.documentElement.scrollWidth, document.documentElement.clientWidth]"
     )
     assert widths[0] <= widths[1] == 375
+
+
+_WIDTHS = "[document.documentElement.scrollWidth, document.documentElement.clientWidth]"
+CONTROLS = {"file", "format", "method", "submit", "copy", "download-md", "download-json"}
+
+
+def test_no_horizontal_scroll_at_the_narrowest_phone_width(live_server, page):
+    page.set_viewport_size({"width": 320, "height": 640})
+    page.goto(live_server + "/")
+    empty = page.evaluate(_WIDTHS)
+    assert empty[0] <= empty[1] == 320
+
+    _extract(page, live_server, _pdf(PAGE_ONE, "x" * 400))
+    _done(page)
+    done = page.evaluate(_WIDTHS)
+    assert done[0] <= done[1] == 320
+
+
+# The element that shows the ring: the file input is visually hidden, so its drop zone does.
+_RING = """() => {
+  const focused = document.activeElement;
+  const shown = focused.id === "file" ? focused.closest(".drop") : focused;
+  const style = getComputedStyle(shown);
+  return {id: focused.id, style: style.outlineStyle, width: parseFloat(style.outlineWidth)};
+}"""
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_every_control_shows_a_focus_ring_when_reached_by_keyboard(live_server, page, scheme):
+    page.emulate_media(color_scheme=scheme)
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+
+    rings = {}
+    for _ in range(20):
+        page.keyboard.press("Tab")
+        ring = page.evaluate(_RING)
+        if ring["id"] in CONTROLS:
+            rings[ring["id"]] = ring
+
+    assert set(rings) == CONTROLS
+    for ring in rings.values():
+        assert ring["style"] not in ("none", "auto") and ring["width"] >= 2, ring

@@ -8,16 +8,20 @@
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <main>
-    <header>
+  <header>
+    <div class="bar">
       <h1>PDF to text</h1>
       <p>Markdown or JSON, page by page. The file is read by this service only.</p>
-    </header>
+    </div>
+  </header>
+
+  <main>
 
     <form id="extract">
       <label id="drop" class="drop" for="file">
         <input id="file" name="file" type="file" accept="application/pdf,.pdf" required>
         <span id="drop-text">Drop a PDF here, or click to pick one</span>
+        <span class="drop-hint">One PDF file</span>
       </label>
 
       <div class="options">
