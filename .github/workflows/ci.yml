@@ -44,6 +44,11 @@ jobs:
         run: |
           docker compose config -q
           docker compose --profile vision config -q
+      - name: Embassy compose file validates with a placeholder settings file
+        run: |
+          printf 'OCR_LLM_BASE_URL=\nOCR_LLM_API_KEY=\nOCR_LLM_DEFAULT_MODEL=\nOCR_LLM_ALLOWED_MODELS=\n' > .env.embassy
+          docker compose -f docker-compose.embassy.yml config -q
+          rm .env.embassy
       - run: docker build -t llm-pdf-ocr-api:ci .
       - name: Start the container
         run: |

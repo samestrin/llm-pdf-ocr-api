@@ -81,6 +81,8 @@ Everything is an environment variable; none is required.
 
 Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
 
+The owner's private review deploy (behind a login, no host port, no model server) is in [Private review deploy on embassy](docs/deploy/embassy.md).
+
 ## Benchmark
 
 Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, committed in [`benchmarks/results/2026-11-03.md`](benchmarks/results/2026-11-03.md), which also has the per-document rows:
