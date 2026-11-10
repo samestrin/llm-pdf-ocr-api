@@ -37,3 +37,9 @@ def test_script_header_command_writes_all_four_images(tmp_path):
 
     for name in NAMES:
         assert (tmp_path / name).read_bytes().startswith(b"\x89PNG"), name
+
+
+def test_changelog_links_to_files_that_exist():
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    for src in re.findall(r"\]\((docs/[^)\s]+)\)", changelog):
+        assert (ROOT / src).is_file(), src
