@@ -1,0 +1,24 @@
+# The private review deploy on embassy, behind Traefik and Authelia at ocr.estr.in.
+# See docs/deploy/embassy.md. For local use, run docker-compose.yml instead.
+#
+# No host port: Traefik reaches the api on the external `proxy` network. No model
+# server: the vision method calls the fleet litellm with this app's own key.
+# Settings come only from .env.embassy, which exists on embassy and never in git.
+name: llm-pdf-ocr-api # images are <name>-<service>, which fleet-deploy's receiver tags for rollback
+
+services:
+  api:
+    # Built from the repo's Dockerfile; its HEALTHCHECK on /health is what a deploy waits for.
+    build: .
+    env_file:
+      - .env.embassy
+    networks:
+      proxy:
+        # The chatbot backend reaches this as http://ocr:5000 (fleet-deploy docs/review-stack.md).
+        aliases:
+          - ocr
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
