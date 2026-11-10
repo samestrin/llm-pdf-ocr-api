@@ -6,7 +6,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ### Added
 
-- The README's web page section now shows a [screenshot](docs/screenshot-web-page.png) of the finished page: each page's image beside its text, and the full Markdown with copy and download buttons.
+- The README's web page section now shows a [screenshot](docs/screenshot-web-page-light-desktop.png) of the finished page: each page's image beside its text, and the full Markdown with copy and download buttons.
 
 - A web page at `/`: drop or pick a PDF, choose Markdown or JSON and a method (auto, text layer, Tesseract, and the vision model when one is configured), and read the result. Plain files in `llm_pdf_ocr/web/`, no build step and no other origin; `/` is served with `Content-Security-Policy: default-src 'self'`. CI loads the page and its assets from the container with the network off.
 - `OCR_WEB_PAGE=false` turns the web page off for an API-only deployment: `/` and `/static/` answer 404 `not_found`; the API is unchanged. On by default.
