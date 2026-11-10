@@ -93,6 +93,19 @@ Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and 
 
 A document with a failed page scores 0, so `text_layer` is penalised for the seven scanned pages it cannot read (it fails them rather than guessing). Neither plain-text method recovers Markdown tables, so Table F1 is 0 for both. The vision row is empty because the committed run had no vision endpoint; it is filled in by running the benchmark with `OCR_LLM_BASE_URL` set.
 
+To fill in the vision row, run it locally with Ollama:
+
+```bash
+docker compose --profile vision up -d
+docker compose exec ollama ollama pull qwen2.5vl:7b
+export OCR_LLM_BASE_URL=http://localhost:11434/v1
+export OCR_LLM_DEFAULT_MODEL=qwen2.5vl:7b
+export OCR_LLM_TIMEOUT_SECONDS=300
+uv run python benchmarks/run.py
+```
+
+The row will name the endpoint (local Ollama) and the model (`qwen2.5vl:7b`). The result file records the model name only, never the endpoint URL or a key.
+
 ## Coming from 0.0.1
 
 0.0.1 was a Flask service that ran TrOCR on CUDA. 1.0.0 is a different service with the same repository:
