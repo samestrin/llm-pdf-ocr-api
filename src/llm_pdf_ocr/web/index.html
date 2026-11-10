@@ -19,9 +19,10 @@
 
     <form id="extract">
       <label id="drop" class="drop" for="file">
-        <input id="file" name="file" type="file" accept="application/pdf,.pdf" required>
+        <input id="file" name="file" type="file" accept="application/pdf,.pdf" required
+          aria-label="PDF file" aria-describedby="drop-text drop-hint">
         <span id="drop-text">Drop a PDF here, or click to pick one</span>
-        <span class="drop-hint">One PDF file</span>
+        <span id="drop-hint" class="drop-hint">One PDF, up to 50 MB and 500 pages unless this service sets other limits</span>
       </label>
 
       <div class="options">
@@ -49,8 +50,10 @@
       <button id="submit" type="submit">Extract</button>
     </form>
 
-    <section id="output" aria-live="polite">
-      <p id="status"></p>
+    <section id="output">
+      <p id="empty">Choose a PDF above, pick the output and method, then press Extract.
+        Each page's text appears here beside its image.</p>
+      <p id="status" role="status" aria-live="polite"></p>
       <progress id="progress" hidden></progress>
       <div id="results" hidden>
         <ol id="pages"></ol>

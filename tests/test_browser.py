@@ -399,3 +399,198 @@ def test_every_control_shows_a_focus_ring_when_reached_by_keyboard(live_server, 
     assert set(rings) == CONTROLS
     for ring in rings.values():
         assert ring["style"] not in ("none", "auto") and ring["width"] >= 2, ring
+
+
+def test_before_a_file_is_chosen_the_page_says_what_to_do_and_the_limits(live_server, page):
+    page.goto(live_server + "/")
+
+    empty = page.locator("#empty")
+    expect(empty).to_be_visible()
+    expect(empty).to_contain_text("Extract")
+    expect(page.locator(".drop-hint")).to_have_text(re.compile(r"50 MB.*500 pages"))
+    expect(page.locator("#status")).to_be_hidden()
+    expect(page.locator("#results")).to_be_hidden()
+
+    page.set_input_files(
+        "#file", {"name": "doc.pdf", "mimeType": "application/pdf", "buffer": b"x"}
+    )
+    expect(empty).to_be_hidden()
+
+
+def test_a_rejected_upload_shows_the_apis_message_and_request_id(live_server, page):
+    with page.expect_response(re.compile(r"/v1/jobs$")) as info:
+        _extract(page, live_server, b"this is not a pdf")
+    response = info.value
+    assert response.status == 400
+    error = response.json()["error"]
+
+    status = page.locator("#status")
+    expect(status).to_have_class(re.compile("error"))
+    expect(status).to_contain_text(error["message"])
+    expect(status).to_contain_text(f"Request ID: {error['request_id']}")
+    expect(page.locator("#results")).to_be_hidden()
+    expect(page.locator("#submit")).to_be_enabled()
+
+
+@pytest.mark.parametrize("path", [r"/v1/jobs$", r"/v1/jobs/[\w-]+$"])
+def test_a_network_failure_shows_a_plain_message(live_server, page, path):
+    page.route(re.compile(path), lambda route: route.abort("internetdisconnected"))
+    _extract(page, live_server, _pdf(PAGE_ONE))
+
+    status = page.locator("#status")
+    expect(status).to_have_text("Could not reach the service. Check the connection and try again.")
+    expect(status).to_have_class(re.compile("error"))
+    expect(page.locator("#results")).to_be_hidden()
+    expect(page.locator("#progress")).to_be_hidden()
+    expect(page.locator("#submit")).to_be_enabled()
+
+
+def _tab_to(page, element_id: str) -> None:
+    for _ in range(20):
+        page.keyboard.press("Tab")
+        if page.evaluate("document.activeElement.id") == element_id:
+            return
+    raise AssertionError(f"#{element_id} is not reachable with Tab")
+
+
+def test_the_whole_flow_works_with_the_keyboard_alone(live_server, page):
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=live_server)
+    data = _pdf(PAGE_ONE, PAGE_TWO)
+    page.goto(live_server + "/")
+
+    _tab_to(page, "file")
+    with page.expect_file_chooser() as chooser:
+        page.keyboard.press("Space")
+    chooser.value.set_files({"name": "doc.pdf", "mimeType": "application/pdf", "buffer": data})
+    expect(page.locator("#drop-text")).to_have_text("doc.pdf")
+
+    _tab_to(page, "format")
+    page.keyboard.press("ArrowDown")  # Markdown -> JSON
+    expect(page.locator("#format")).to_have_value("json")
+    _tab_to(page, "method")
+    page.keyboard.press("ArrowDown")  # Auto -> Text layer
+    expect(page.locator("#method")).to_have_value("text_layer")
+    _tab_to(page, "submit")
+    page.keyboard.press("Enter")
+    _done(page)
+    assert json.loads(page.locator("#result").text_content())["page_count"] == 2
+
+    doc = extract_pdf(data, method=MethodChoice.TEXT_LAYER)
+    _tab_to(page, "copy")
+    page.keyboard.press("Enter")
+    expect(page.locator("#status")).to_have_text("Markdown copied.")
+    assert page.evaluate("navigator.clipboard.readText()") == render_markdown(doc)
+    for button, name in (("download-md", "result.md"), ("download-json", "result.json")):
+        _tab_to(page, button)
+        with page.expect_download() as info:
+            page.keyboard.press("Space")
+        assert info.value.suggested_filename == name
+
+
+def test_every_control_has_an_accessible_name(live_server, page):
+    page.route(
+        "**/v1/capabilities",
+        lambda route: route.fulfill(
+            json={"methods": ["auto", "text_layer", "tesseract", "vision"], "models": ["m-one"]}
+        ),
+    )
+    _extract(page, live_server, _pdf(PAGE_ONE), method="vision")
+    expect(page.locator("#model")).to_be_visible()
+    page.unroute_all()
+    page.select_option("#method", "text_layer")
+    page.click("#submit")
+    _done(page)
+    page.select_option("#method", "vision")  # the model picker is shown again
+
+    controls = page.locator("input, select, button")
+    ids = [controls.nth(n).get_attribute("id") for n in range(controls.count())]
+    assert set(ids) == CONTROLS | {"model"}
+    names = {
+        "file": "PDF file",
+        "format": "Output",
+        "method": "Method",
+        "model": "Model",
+        "submit": "Extract",
+        "copy": "Copy Markdown",
+        "download-md": "Download Markdown",
+        "download-json": "Download JSON",
+    }
+    for element_id, name in names.items():
+        expect(page.locator(f"#{element_id}")).to_have_accessible_name(name)
+
+
+def test_status_changes_are_announced_and_results_are_not_read_out(live_server, page):
+    page.goto(live_server + "/")
+
+    status = page.locator("#status")
+    assert status.get_attribute("role") == "status"
+    assert status.get_attribute("aria-live") == "polite"
+    # A whole document in a live region would be read out in one go.
+    assert page.locator("[aria-live] #results, [aria-live] #empty").count() == 0
+
+
+# The WCAG contrast ratio of every visible piece of the page's own text against the
+# colour behind it (walking up to the first ancestor with a background).
+_CONTRAST = """(selectors) => {
+  const rgba = (s) => {
+    const [r, g, b, a = 1] = s.match(/[\\d.]+/g).map(Number);
+    return [r, g, b, a];
+  };
+  const over = (top, under) => top.slice(0, 3).map((c, i) => c * top[3] + under[i] * (1 - top[3]));
+  const lum = (rgb) => {
+    const [r, g, b] = rgb.map((c) => {
+      c /= 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const background = (node) => {
+    const layers = [];
+    for (let n = node; n; n = n.parentElement) {
+      const bg = rgba(getComputedStyle(n).backgroundColor);
+      if (bg[3] > 0) layers.push(bg);
+      if (bg[3] === 1) break;
+    }
+    let colour = [255, 255, 255];
+    for (const layer of layers.reverse()) colour = over(layer, colour);
+    return colour;
+  };
+  const own = (node) =>
+    [...node.childNodes].some((c) => c.nodeType === Node.TEXT_NODE && c.textContent.trim());
+  const nodes = [...document.querySelectorAll("body *")].filter(
+    (n) => (own(n) || n.matches(selectors)) && n.checkVisibility() && !n.disabled
+      && !n.closest("option, script, style")
+  );
+  return nodes.map((n) => {
+    const bg = background(n);
+    const fg = over(rgba(getComputedStyle(n).color), bg);
+    const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+    return { what: n.id || n.className || n.tagName, ratio: (hi + 0.05) / (lo + 0.05) };
+  });
+}"""
+
+
+def _contrast(page) -> list[dict]:
+    return page.evaluate(_CONTRAST, "select")
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_the_pages_own_text_meets_wcag_aa_contrast_in_both_themes(live_server, page, scheme):
+    page.emulate_media(color_scheme=scheme)
+    page.goto(live_server + "/")
+    seen = _contrast(page)  # the empty state
+
+    _extract(page, live_server, b"this is not a pdf")  # the error state
+    expect(page.locator("#status")).to_have_class(re.compile("error"))
+    seen += _contrast(page)
+
+    _extract(page, live_server, _pdf(PAGE_ONE, None))  # a result with a failed page
+    _done(page)
+    seen += _contrast(page)
+    page.hover("#drop")
+    seen += _contrast(page)
+
+    whats = {s["what"] for s in seen}
+    assert {"status", "drop-hint", "empty", "submit", "failure", "method", "text"} <= whats
+    low = [s for s in seen if s["ratio"] < 4.5]
+    assert low == [], low
