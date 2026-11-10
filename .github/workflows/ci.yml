@@ -92,3 +92,20 @@ jobs:
         run: |
           docker logs api
           docker logs offline || true
+
+  # Follows the README "Try it" steps on a clean checkout. Separate from `docker`, which holds port 5000.
+  try-it:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose up --build (the checkout stands in for git clone and cd)
+        run: |
+          docker compose up --build > compose.log 2>&1 &
+          for _ in $(seq 1 300); do curl -fsS localhost:5000/health && exit 0; sleep 2; done
+          cat compose.log; exit 1
+      - name: Post the sample file
+        run: |
+          curl -F file=@tests/fixtures/born_digital.pdf localhost:5000/v1/extract | tee out.json
+          grep -q "Quarterly Report" out.json
+      - if: failure()
+        run: cat compose.log

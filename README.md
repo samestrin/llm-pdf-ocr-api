@@ -12,6 +12,24 @@
 
 A page that cannot be read is reported as `failed` with a reason; it is never returned as an empty page. Long PDFs can run as jobs with per-page progress.
 
+## Try it
+
+On a fresh clone, with only Docker installed:
+
+```bash
+git clone https://github.com/samestrin/llm-pdf-ocr-api
+cd llm-pdf-ocr-api
+docker compose up --build
+```
+
+Open <http://localhost:5000> and drop in `tests/fixtures/born_digital.pdf`, a one-page PDF with a text layer. The page shows its text and says it was read by `text_layer`.
+
+Or send the same file with `curl` from a second terminal:
+
+```bash
+curl -F file=@tests/fixtures/born_digital.pdf localhost:5000/v1/extract
+```
+
 ## Quick start
 
 Run the published image (no GPU and no model download; Tesseract is inside):
