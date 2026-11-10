@@ -1,4 +1,4 @@
-"""docker-compose.embassy.yml is the private review deploy: built image, no host port, no model server."""
+"""docker-compose.embassy.yml, the private review deploy: no host port, no model server."""
 
 import re
 from pathlib import Path
@@ -79,4 +79,3 @@ def test_doc_names_every_variable_and_gives_no_value():
 def test_ci_validates_it_with_a_placeholder_env_file():
     assert "docker compose -f docker-compose.embassy.yml config -q" in CI
     assert re.search(r"> ?\.env\.embassy", CI)
-
