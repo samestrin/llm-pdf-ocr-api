@@ -9,6 +9,7 @@ const form = $("extract");
 const drop = $("drop");
 const fileInput = $("file");
 const dropText = $("drop-text");
+const empty = $("empty");
 const method = $("method");
 const modelField = $("model-field");
 const model = $("model");
@@ -27,16 +28,30 @@ function showStatus(text, isError = false) {
 function showFile() {
   const file = fileInput.files[0];
   dropText.textContent = file ? file.name : "Drop a PDF here, or click to pick one";
+  empty.hidden = Boolean(file);
 }
 
+// The API's error message, with its request id so a user can quote it to the operator.
 async function errorMessage(response) {
   try {
-    const body = await response.json();
-    if (body.error && body.error.message) return body.error.message;
+    const { error } = await response.json();
+    if (error && error.message) {
+      return error.request_id ? `${error.message} (Request ID: ${error.request_id})` : error.message;
+    }
   } catch (_) {
     // not JSON: fall through to the status
   }
   return `request failed (${response.status})`;
+}
+
+// fetch, with a plain message in place of the browser's own ("Failed to fetch") when
+// the service cannot be reached at all.
+async function request(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (_) {
+    throw new Error("Could not reach the service. Check the connection and try again.");
+  }
 }
 
 // Offer the vision method, and its models, only when the operator configured one.
@@ -64,7 +79,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function follow(id) {
   for (;;) {
-    const response = await fetch(`/v1/jobs/${encodeURIComponent(id)}`);
+    const response = await request(`/v1/jobs/${encodeURIComponent(id)}`);
     if (!response.ok) throw new Error(await errorMessage(response));
     const job = await response.json();
     if (job.status === "done") return job;
@@ -206,7 +221,7 @@ async function extract(event) {
   clearResult();
   showStatus("Uploading…");
   try {
-    const response = await fetch("/v1/jobs", { method: "POST", body: data });
+    const response = await request("/v1/jobs", { method: "POST", body: data });
     if (!response.ok) throw new Error(await errorMessage(response));
     const id = (await response.json()).id;
     const job = await follow(id);
