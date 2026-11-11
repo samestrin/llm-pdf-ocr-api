@@ -29,7 +29,7 @@ methods and vision model names it may offer; never the backend's URL or key.
 `GET /docs` is the API reference: Scalar, vendored in `llm_pdf_ocr/web/scalar/` at a
 pinned version, reading this service's own `/openapi.json`. It loads nothing from
 another origin -- no request proxy, no web fonts, no telemetry -- so it works offline,
-and it goes off with the web page. FastAPI's own Swagger UI and ReDoc are turned off;
+and it goes off with the web page. FastAPI's own docs pages and ReDoc are turned off;
 `/openapi.json` is unchanged.
 """
 
