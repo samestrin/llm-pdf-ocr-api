@@ -239,7 +239,136 @@ function clearResult() {
   results.hidden = true;
   pageList.replaceChildren();
   result.textContent = "";
+  findInput.value = "";
+  clearFind();
 }
+
+// Find in the result: a plain-text, case-insensitive search over each page's text and the
+// Markdown or JSON output. It never leaves the browser. Typing is debounced; one pass over
+// each text collects the matches, and each text's DOM is rebuilt at most once per pass.
+const FIND_DEBOUNCE_MS = 150;
+const findInput = $("find-input");
+const findCount = $("find-count");
+const findPrev = $("find-prev");
+const findNext = $("find-next");
+
+let findMarks = []; // every highlight, in document order
+let findCurrent = -1; // index of the current match, -1 when there is none
+let findCurrentMark = null;
+let findTimer = null;
+let findQuery = ""; // the query the highlights were built from
+
+// The texts find searches, in document order: each page's text, then the whole output.
+function findTexts() {
+  return [...pageList.querySelectorAll(".text"), result];
+}
+
+function clearFind() {
+  clearTimeout(findTimer);
+  findTimer = null;
+  findQuery = "";
+  findMarks = [];
+  findCurrent = -1;
+  findCurrentMark = null;
+  for (const node of findTexts()) {
+    if (node.querySelector("mark")) node.textContent = node.textContent;
+  }
+  findCount.textContent = "";
+  findPrev.disabled = true;
+  findNext.disabled = true;
+}
+
+// One pass over the text: every start of the query, case-insensitive and literal (no
+// regex). Matches do not overlap.
+function matchStarts(text, query) {
+  const hay = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const starts = [];
+  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+    starts.push(i);
+  }
+  return starts;
+}
+
+// Rebuild one text once: text nodes and <mark> elements, never HTML.
+function highlightText(node, query) {
+  const text = node.textContent;
+  const starts = matchStarts(text, query);
+  if (!starts.length) {
+    if (node.querySelector("mark")) node.textContent = text;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  let pos = 0;
+  for (const start of starts) {
+    if (start > pos) frag.append(text.slice(pos, start));
+    frag.append(el("mark", "find-match", text.slice(start, start + query.length)));
+    pos = start + query.length;
+  }
+  if (pos < text.length) frag.append(text.slice(pos));
+  node.replaceChildren(frag);
+}
+
+function setCurrent(index) {
+  if (findCurrentMark) findCurrentMark.classList.remove("current");
+  findCurrent = index;
+  findCurrentMark = findMarks[index] || null;
+  if (findCurrentMark) findCurrentMark.classList.add("current");
+  findCount.textContent = findMarks.length
+    ? `${index + 1} of ${findMarks.length}`
+    : findInput.value
+      ? "No matches"
+      : "";
+  findPrev.disabled = !findMarks.length;
+  findNext.disabled = !findMarks.length;
+}
+
+function runFind() {
+  findTimer = null;
+  const query = findInput.value;
+  if (query === findQuery) return;
+  findQuery = query;
+  if (!query) {
+    clearFind();
+    return;
+  }
+  for (const node of findTexts()) highlightText(node, query);
+  findMarks = [...results.querySelectorAll("mark.find-match")];
+  findCurrentMark = null; // the old marks are gone with the rebuilt texts
+  setCurrent(findMarks.length ? 0 : -1);
+}
+
+// Move to the next or previous match, wrapping, and bring it into view.
+function stepFind(delta) {
+  if (findTimer) {
+    clearTimeout(findTimer); // a step right after typing searches the new query first
+    runFind();
+  }
+  if (!findMarks.length) return;
+  const n = findMarks.length;
+  setCurrent((((findCurrent + delta) % n) + n) % n);
+  // Open the page if it is collapsed, then scroll the match into view.
+  for (let node = findCurrentMark.parentElement; node; node = node.parentElement) {
+    if (node.tagName === "DETAILS") node.open = true;
+  }
+  findCurrentMark.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
+findInput.addEventListener("input", () => {
+  clearTimeout(findTimer);
+  findTimer = setTimeout(runFind, FIND_DEBOUNCE_MS);
+});
+findInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    stepFind(event.shiftKey ? -1 : 1);
+  } else if (event.key === "Escape") {
+    findInput.value = "";
+    clearFind();
+  }
+});
+findPrev.addEventListener("click", () => stepFind(-1));
+findNext.addEventListener("click", () => stepFind(1));
 
 async function extract(event) {
   event.preventDefault();

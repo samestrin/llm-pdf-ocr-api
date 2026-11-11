@@ -752,7 +752,9 @@ def _hits(text: str, query: str) -> int:
 
 
 @pytest.mark.parametrize("fmt", ["markdown", "json"])
-def test_find_highlights_every_match_in_the_page_texts_and_the_output(live_server, page, fmt):
+def test_find_highlights_every_match_in_the_page_texts_and_the_output(
+    live_server, page, fresh_jobs, fmt
+):
     _result_doc(live_server, page, fmt=fmt)
     output = page.locator("#result").text_content()
     expected = _hits(PAGE_ONE, "page") + _hits(PAGE_TWO, "page") + _hits(output, "page")
@@ -775,7 +777,7 @@ def test_find_highlights_every_match_in_the_page_texts_and_the_output(live_serve
     expect(page.locator("#find-next")).to_be_enabled()
 
 
-def test_find_steps_with_keys_and_buttons_wrapping_and_scrolling(live_server, page):
+def test_find_steps_with_keys_and_buttons_wrapping_and_scrolling(live_server, page, fresh_jobs):
     texts = [f"Needle number {n} hides on this page." for n in range(1, 7)]
     _extract(page, live_server, _pdf(*texts))
     _done(page)
@@ -808,7 +810,7 @@ def test_find_steps_with_keys_and_buttons_wrapping_and_scrolling(live_server, pa
     expect(page.locator("mark.current")).to_have_count(1)
 
 
-def test_find_escape_clears_the_query_and_every_highlight(live_server, page):
+def test_find_escape_clears_the_query_and_every_highlight(live_server, page, fresh_jobs):
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
     page.fill("#find-input", "page")
@@ -825,7 +827,7 @@ def test_find_escape_clears_the_query_and_every_highlight(live_server, page):
     assert page.evaluate("document.activeElement.id") == "find-input"
 
 
-def test_find_with_no_match_says_so_and_cannot_step(live_server, page):
+def test_find_with_no_match_says_so_and_cannot_step(live_server, page, fresh_jobs):
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
 
@@ -842,7 +844,7 @@ def test_find_with_no_match_says_so_and_cannot_step(live_server, page):
     expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
 
 
-def test_find_is_literal_text_not_a_regex(live_server, page):
+def test_find_is_literal_text_not_a_regex(live_server, page, fresh_jobs):
     text = "a.c and abc and a.c; 1.50 not 1x50; [x] not x; (y) not y."
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -856,11 +858,14 @@ def test_find_is_literal_text_not_a_regex(live_server, page):
         expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
         marks = page.locator("mark.find-match")
         expect(marks).to_have_count(expected)
+        # Consecutive queries can share a count ("1 of 2"), so wait for the new marks
+        # themselves, not only the count, before reading them.
+        expect(marks.nth(0)).to_have_text(re.compile(rf"^{re.escape(query)}$", re.IGNORECASE))
         assert all(t.lower() == query.lower() for t in marks.all_text_contents())
     assert errors == []
 
 
-def test_find_never_sends_anything_to_the_server(live_server, page):
+def test_find_never_sends_anything_to_the_server(live_server, page, fresh_jobs):
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
     page.wait_for_load_state("networkidle")
@@ -902,7 +907,7 @@ _FIND_PASS_CLOCK = """() => {
 
 
 @pytest.mark.parametrize("fmt", ["markdown", "json"])
-def test_find_on_500_pages_is_one_pass_per_burst_under_200_ms(live_server, page, fmt):
+def test_find_on_500_pages_is_one_pass_per_burst_under_200_ms(live_server, page, fresh_jobs, fmt):
     doc = Document(
         pages=[
             Page(
@@ -966,7 +971,7 @@ def test_find_on_500_pages_is_one_pass_per_burst_under_200_ms(live_server, page,
 
 
 @pytest.mark.parametrize("scheme", ["light", "dark"])
-def test_find_box_and_highlights_meet_wcag_aa_in_both_themes(live_server, page, scheme):
+def test_find_box_and_highlights_meet_wcag_aa_in_both_themes(live_server, page, fresh_jobs, scheme):
     page.emulate_media(color_scheme=scheme)
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
@@ -982,7 +987,7 @@ def test_find_box_and_highlights_meet_wcag_aa_in_both_themes(live_server, page, 
 
 
 @pytest.mark.parametrize("width", [375, 320])
-def test_find_bar_fits_and_steps_at_phone_width(live_server, page, width):
+def test_find_bar_fits_and_steps_at_phone_width(live_server, page, fresh_jobs, width):
     page.set_viewport_size({"width": width, "height": 800})
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
@@ -999,7 +1004,9 @@ def test_find_bar_fits_and_steps_at_phone_width(live_server, page, width):
 
 
 @pytest.mark.parametrize("scheme", ["light", "dark"])
-def test_find_controls_are_keyboard_reachable_with_a_focus_ring(live_server, page, scheme):
+def test_find_controls_are_keyboard_reachable_with_a_focus_ring(
+    live_server, page, fresh_jobs, scheme
+):
     page.emulate_media(color_scheme=scheme)
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
