@@ -810,6 +810,51 @@ def test_find_steps_with_keys_and_buttons_wrapping_and_scrolling(live_server, pa
     expect(page.locator("mark.current")).to_have_count(1)
 
 
+def test_find_enter_right_after_typing_steps_without_waiting_for_the_debounce(
+    live_server, page, fresh_jobs
+):
+    texts = [f"Needle number {n} hides on this page." for n in range(1, 7)]
+    _extract(page, live_server, _pdf(*texts))
+    _done(page)
+    total = 12  # one match per page card, one per page in the Markdown output
+
+    # Count every runFind execution, including the synchronous one stepFind runs when
+    # Enter arrives before the debounce; the timer-based pass clock cannot see that one.
+    assert page.evaluate("typeof window.runFind") == "function"
+    page.evaluate("""() => {
+      window.__findRuns = 0;
+      const real = window.runFind;
+      window.runFind = (...args) => {
+        window.__findRuns += 1;
+        return real(...args);
+      };
+    }""")
+    # Type the whole query and press Enter in one JS turn, so the 150 ms debounce
+    # cannot have fired: the step must search the new query itself, exactly once.
+    page.evaluate("""() => {
+      const input = document.getElementById("find-input");
+      input.focus();
+      for (const ch of "needle") {
+        input.value += ch;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+      );
+    }""")
+
+    expect(page.locator("#find-count")).to_have_text(f"2 of {total}")
+    expect(page.locator("mark.find-match")).to_have_count(total)
+    current = page.locator("mark.find-match.current")
+    expect(current).to_have_count(1)
+    expect(current).to_be_in_viewport()
+    expect(page.locator(".page-result").nth(1).locator("mark.current")).to_have_count(1)
+    assert page.evaluate("window.__findRuns") == 1
+    page.wait_for_timeout(300)  # longer than the debounce: no second pass may arrive
+    expect(page.locator("#find-count")).to_have_text(f"2 of {total}")
+    assert page.evaluate("window.__findRuns") == 1
+
+
 def test_find_escape_clears_the_query_and_every_highlight(live_server, page, fresh_jobs):
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
     _done(page)
@@ -825,6 +870,34 @@ def test_find_escape_clears_the_query_and_every_highlight(live_server, page, fre
     expect(page.locator("#find-next")).to_be_disabled()
     expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
     assert page.evaluate("document.activeElement.id") == "find-input"
+
+
+def test_find_backspacing_to_an_empty_query_clears_and_the_page_stays_alive(
+    live_server, page, fresh_jobs
+):
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    output = page.locator("#result").text_content()
+    box = page.locator("#find-input")
+    box.fill("page")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+    expect(page.locator("mark.find-match").first).to_be_visible()
+
+    for _ in range(len("page")):  # delete the query the way a user does, key by key
+        box.press("Backspace")
+
+    expect(page.locator("#find-input")).to_have_value("")
+    expect(page.locator("#find-count")).to_have_text("")
+    expect(page.locator("mark.find-match")).to_have_count(0)
+    expect(page.locator("#find-prev")).to_be_disabled()
+    expect(page.locator("#find-next")).to_be_disabled()
+    # The texts are restored exactly, and the page still responds and searches again.
+    expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
+    assert page.locator("#result").text_content() == output
+    assert page.evaluate("1 + 1") == 2
+    expected = _hits(PAGE_ONE, "hello") + _hits(PAGE_TWO, "hello") + _hits(output, "hello")
+    box.fill("hello")
+    expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
 
 
 def test_find_with_no_match_says_so_and_cannot_step(live_server, page, fresh_jobs):
