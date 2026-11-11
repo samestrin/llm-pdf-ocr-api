@@ -524,8 +524,20 @@ progress {
 /* Wide enough for both: the page image beside its text. */
 @media (min-width: 48rem) {
   .page-result {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-columns: auto minmax(0, 1fr);
   }
+}
+
+/* A thumbnail: the text card, not the image, sets the row's height. */
+.page-figure {
+  max-width: 20rem;
+}
+
+.page-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
 }
 
 .page-result.failed {
@@ -534,8 +546,10 @@ progress {
 
 .page-image {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
+  max-height: 240px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: #fff; /* a PDF page is white in both themes */

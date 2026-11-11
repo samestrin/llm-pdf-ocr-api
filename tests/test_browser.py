@@ -111,7 +111,7 @@ def test_three_pages_end_to_end_each_with_its_image_method_and_failure(live_serv
     for n in (1, 2, 3):
         card = cards.nth(n - 1)
         expect(card.locator("h3")).to_have_text(f"Page {n}")
-        expect(card.locator(".method")).to_contain_text("text_layer")
+        expect(card.locator(".method")).to_have_text("Method: Text layer")
         image = card.locator("img.page-image")
         assert re.fullmatch(rf"/v1/jobs/[\w-]+/pages/{n}\.png", image.get_attribute("src"))
         page.wait_for_function(
@@ -237,9 +237,9 @@ def test_model_confidence_and_fallback_are_shown_as_render_markdown_shows_them(l
     _done(page)
 
     cards = page.locator(".page-result")
-    expect(cards.nth(0).locator(".method")).to_have_text("Method: vision · Model: m-one")
+    expect(cards.nth(0).locator(".method")).to_have_text("Method: Vision model · Model: m-one")
     expect(cards.nth(0).locator(".fallback")).to_have_count(0)
-    expect(cards.nth(1).locator(".method")).to_have_text("Method: tesseract · Confidence: 0.87")
+    expect(cards.nth(1).locator(".method")).to_have_text("Method: Tesseract · Confidence: 0.87")
     expect(cards.nth(1).locator(".fallback")).to_have_text(
         "Read with Tesseract because vision (m-one) failed (vision_failed): the model timed out"
     )
@@ -666,8 +666,8 @@ def test_try_a_sample_reads_the_bundled_pdf_without_a_file(live_server, page, fr
     expect(page.locator("#drop-text")).to_have_text("sample.pdf")
     cards = page.locator(".page-result")
     expect(cards).to_have_count(4)
-    expect(cards.nth(0).locator(".method")).to_contain_text("text_layer")
-    expect(cards.nth(1).locator(".method")).to_contain_text("tesseract")
+    expect(cards.nth(0).locator(".method")).to_have_text("Method: Text layer")
+    expect(cards.nth(1).locator(".method")).to_contain_text("Method: Tesseract")
 
 
 def test_the_empty_state_explains_each_method_and_the_vision_line_needs_a_model(live_server, page):
@@ -704,3 +704,35 @@ def test_at_desktop_width_each_page_image_sits_beside_its_text(live_server, page
     body = card.locator(".page-body").bounding_box()
     assert body["x"] >= image["x"] + image["width"]
     assert abs(body["y"] - image["y"]) < 2
+
+
+def test_each_page_image_is_a_thumbnail_that_opens_full_size(live_server, page, fresh_jobs):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+
+    card = page.locator(".page-result")
+    image = card.locator("img.page-image")
+    page.wait_for_function("(i) => i.complete && i.naturalWidth > 0", arg=image.element_handle())
+    assert image.bounding_box()["height"] <= 240
+    link = card.locator("a.page-link")
+    assert link.get_attribute("href") == image.get_attribute("src")
+    assert link.get_attribute("target") == "_blank"
+    assert "noopener" in link.get_attribute("rel")
+
+
+@pytest.mark.parametrize(
+    ("texts", "line"), [((PAGE_ONE,), "Done: 1 page."), ((PAGE_ONE, PAGE_TWO), "Done: 2 pages.")]
+)
+def test_the_done_line_counts_pages_in_plain_english(live_server, page, fresh_jobs, texts, line):
+    _extract(page, live_server, _pdf(*texts))
+
+    expect(page.locator("#status")).to_have_text(line, timeout=20_000)
+
+
+def test_the_vision_line_is_plain(live_server, page):
+    page.goto(live_server + "/")
+
+    expect(page.locator("#vision-help dd")).to_have_text(
+        "An AI vision model reads the page image. The image is sent to that model."
+    )

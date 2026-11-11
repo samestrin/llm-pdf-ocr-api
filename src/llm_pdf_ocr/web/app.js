@@ -140,19 +140,37 @@ function fallbackLine(fallback) {
   return `Read with Tesseract because ${method} (${model}) failed (${error.code}): ${error.message}`;
 }
 
+// The Method select's names, for the page cards. The Markdown and JSON keep the API's ids.
+const METHOD_NAMES = { text_layer: "Text layer", tesseract: "Tesseract", vision: "Vision model" };
+
+function methodLabel(page) {
+  let line = `Method: ${METHOD_NAMES[page.method] || page.method}`;
+  if (page.model !== null) line += ` · Model: ${page.model}`;
+  if (page.confidence !== null) line += ` · Confidence: ${page.confidence.toFixed(2)}`;
+  return line;
+}
+
 // One card per page: its image beside its text, its method, and why it failed if it did.
+// The image is a thumbnail that opens full size in a new tab.
 function pageCard(jobId, page) {
   const card = el("li", page.status === "failed" ? "page-result failed" : "page-result");
   const figure = el("div", "page-figure");
   const image = el("img", "page-image");
   image.alt = `Page ${page.page}`;
   image.loading = "lazy";
-  image.addEventListener("error", () => image.replaceWith(el("p", "no-image", "Image not available")));
-  image.src = `/v1/jobs/${encodeURIComponent(jobId)}/pages/${page.page}.png`;
-  figure.append(image);
+  const url = `/v1/jobs/${encodeURIComponent(jobId)}/pages/${page.page}.png`;
+  const link = el("a", "page-link");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.title = `Open page ${page.page} full size`;
+  image.addEventListener("error", () => link.replaceWith(el("p", "no-image", "Image not available")));
+  image.src = url;
+  link.append(image);
+  figure.append(link);
 
   const body = el("div", "page-body");
-  body.append(el("h3", "", `Page ${page.page}`), el("p", "method", methodLine(page)));
+  body.append(el("h3", "", `Page ${page.page}`), el("p", "method", methodLabel(page)));
   if (page.fallback) body.append(el("p", "fallback", fallbackLine(page.fallback)));
   if (page.error) {
     body.append(el("p", "failure", `Failed (${page.error.code}): ${page.error.message}`));
@@ -251,7 +269,8 @@ async function extract(event) {
     if (!doc || !Array.isArray(doc.pages)) throw new Error("the job returned no result");
     showResult(id, doc, format);
     const failed = doc.failed_pages.length ? `, ${doc.failed_pages.length} failed` : "";
-    showStatus(`Done: ${doc.page_count} page(s)${failed}.`, doc.failed_pages.length > 0);
+    const pages = `${doc.page_count} ${doc.page_count === 1 ? "page" : "pages"}`;
+    showStatus(`Done: ${pages}${failed}.`, doc.failed_pages.length > 0);
   } catch (err) {
     clearResult();
     showStatus(err.message, true);
