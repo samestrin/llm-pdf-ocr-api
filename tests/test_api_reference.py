@@ -1,21 +1,18 @@
 """The API reference at `/docs`: Scalar, vendored, offline, reading this service's own spec.
 
-The browser test at the bottom loads the page with every request to another origin
-blocked, and runs "try it" on `/v1/capabilities`.
+The browser tests at the bottom load the page with every request to another origin
+blocked, and run "try it" on `/v1/capabilities`.
 """
 
 import hashlib
 import json
 import re
-import socket
-import threading
-import time
 from pathlib import Path
 
 import pytest
-import uvicorn
 from fastapi.testclient import TestClient
 from playwright.sync_api import expect, sync_playwright
+from test_browser import live_server  # noqa: F401  (a session-scoped fixture)
 
 from llm_pdf_ocr.app import app
 
@@ -79,10 +76,10 @@ def test_the_vendored_script_is_served_by_this_service():
 def test_the_vendored_script_is_the_pinned_release():
     """The file is the published bundle of the version named beside it, byte for byte."""
     notes = (WEB / "scalar" / "README.md").read_text()
-    (version,) = re.findall(r"@scalar/api-reference@(\d+\.\d+\.\d+)", notes)
+    versions = set(re.findall(r"@scalar/api-reference@(\d+\.\d+\.\d+)", notes))
     (digest,) = re.findall(r"\b([0-9a-f]{64})\b", notes)
 
-    assert version in notes
+    assert len(versions) == 1
     assert hashlib.sha256(SCALAR.read_bytes()).hexdigest() == digest
 
 
@@ -94,7 +91,12 @@ def test_the_reference_loads_nothing_from_another_origin():
     for asset in assets:
         assert asset.startswith("/"), asset
         assert client.get(asset).status_code == 200, asset
-    for path, body in {"/docs": html} | {a: client.get(a).text for a in assets}.items():
+    # The vendored bundle is a third-party file full of documentation links; what it
+    # requests at run time is measured in the browser test at the bottom instead.
+    ours = {"/docs": html} | {
+        a: client.get(a).text for a in assets if not a.startswith("/static/scalar/")
+    }
+    for path, body in ours.items():
         # The SVG namespace in the favicon is a name, not a request to that origin.
         body = body.replace('xmlns="http://www.w3.org/2000/svg"', "")
         assert not re.search(r"https?:", body, re.IGNORECASE), path
@@ -125,7 +127,7 @@ def test_the_accent_is_the_apps_violet_in_both_themes():
     assert "#c4b5fd" in css  # dark
 
 
-def test_the_page_has_no_inline_script_or_style_the_policy_would_block():
+def test_the_page_ships_no_inline_script_or_style():
     html = client.get("/docs").text
 
     for tag in re.findall(r"<script[^>]*>", html):
@@ -136,16 +138,20 @@ def test_the_page_has_no_inline_script_or_style_the_policy_would_block():
     assert " style=" not in html
 
 
-def test_the_policy_allows_this_origin_and_one_nonce_per_request():
-    first, second = client.get("/docs"), client.get("/docs")
-    policy = first.headers["content-security-policy"]
+def _directives(policy: str) -> dict[str, str]:
+    return dict(part.strip().split(" ", 1) for part in policy.split(";") if part.strip())
 
-    assert policy.startswith("default-src 'self'")
-    assert "http://" not in policy and "https://" not in policy
-    assert "'unsafe-eval'" not in policy
-    (nonce,) = re.findall(r"'nonce-([^']+)'", policy)
-    assert f'<meta property="csp-nonce" content="{nonce}">' in first.text
-    assert nonce not in second.headers["content-security-policy"]
+
+def test_the_policy_keeps_every_other_origin_out():
+    directives = _directives(client.get("/docs").headers["content-security-policy"])
+
+    assert directives["default-src"] == "'self'"
+    # Scalar injects its own stylesheets while it draws the page; scripts stay strict.
+    assert directives["style-src"] == "'self' 'unsafe-inline'"
+    for value in directives.values():
+        assert "http" not in value
+        assert "'unsafe-eval'" not in value
+    assert "unsafe-inline" not in directives.get("script-src", directives["default-src"])
 
 
 def test_docs_is_read_only():
@@ -176,61 +182,86 @@ def test_the_api_still_answers_when_the_page_is_off(page_off):
     assert client.get("/v1/capabilities").status_code == 200
 
 
-# In a real browser, with the network off
-
-
-@pytest.fixture(scope="module")
-def live_server():
-    """The app on a free local port, for the test that needs a real browser."""
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started:
-        assert thread.is_alive() and time.monotonic() < deadline, "server did not start"
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=10)
+# In a real browser, with the network off. The server is the one `test_browser.py`
+# starts for the whole session: a second one would run the app's lifespan again, and
+# its shutdown stops the job store every later browser test needs.
 
 
 @pytest.fixture
-def offline_page(live_server):
+def offline_page(live_server):  # noqa: F811
     """A browser page where every request to another origin is blocked and recorded."""
     blocked = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        _block_other_origins(page, live_server, blocked)
+        yield page, blocked
+        browser.close()
 
-    def route_handler(route):
-        if route.request.url.startswith(live_server):
+
+def _block_other_origins(page, base: str, blocked: list) -> None:
+    def handler(route):
+        if route.request.url.startswith(base):
             route.continue_()
         else:
             blocked.append(route.request.url)
             route.abort()
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        page = browser.new_page()
-        page.route("**/*", route_handler)
-        yield page, blocked
-        browser.close()
+    page.route("**/*", handler)
 
 
-def test_the_reference_lists_every_endpoint_and_try_it_works_offline(offline_page, live_server):
+def _operations() -> set[str]:
+    """Every operation in the snapshot, as the reference's sidebar links to it."""
+    methods = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+    snapshot = json.loads((FIXTURES / "openapi_paths.json").read_text())
+    return {
+        f"#{method.upper()}{path}"
+        for path, item in snapshot.items()
+        for method in item
+        if method in methods
+    }
+
+
+def test_the_reference_lists_every_endpoint_and_try_it_works_offline(offline_page, live_server):  # noqa: F811
     page, blocked = offline_page
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.goto(live_server + "/docs")
 
-    for path in json.loads((FIXTURES / "openapi_paths.json").read_text()):
-        expect(page.get_by_text(path, exact=False).first).to_be_visible(timeout=15000)
+    expect(page.get_by_role("link", name="Capabilities")).to_be_visible(timeout=20000)
+    hrefs = page.eval_on_selector_all("a", "links => links.map(a => a.getAttribute('href'))")
+    assert _operations() <= set(hrefs)
 
-    page.get_by_text("/v1/capabilities", exact=False).first.click()
-    page.get_by_role("button", name="Test Request").click()
-    page.get_by_role("button", name="Send").click()
+    page.get_by_role("button", name=re.compile(r"Test Request.*capabilities")).click()
+    dialog = page.get_by_role("dialog", name="API Client")
+    dialog.get_by_role("button", name=re.compile(r"Send get request to .*capabilities")).click()
 
-    expect(page.get_by_text("200", exact=True).first).to_be_visible(timeout=15000)
-    expect(page.get_by_text("text_layer").first).to_be_visible(timeout=15000)
+    expect(dialog.get_by_text("200 OK")).to_be_visible(timeout=15000)
+    expect(dialog.get_by_text("text_layer")).to_be_visible(timeout=15000)
+    # Nothing left this service, on load or while running the request: no proxy, no
+    # font, no telemetry.
     assert blocked == []
+    # Scalar probes for eval once and falls back when the policy refuses it; that is a
+    # console notice, not a page error, and the policy must not be widened for it.
     assert errors == []
+
+
+@pytest.mark.parametrize(("scheme", "accent"), [("light", "#6d28d9"), ("dark", "#c4b5fd")])
+def test_the_reference_is_violet_in_both_themes_in_a_browser(live_server, scheme, accent):  # noqa: F811
+    blocked = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(color_scheme=scheme)
+        _block_other_origins(page, live_server, blocked)
+        page.goto(live_server + "/docs")
+        expect(page.get_by_role("link", name="Capabilities")).to_be_visible(timeout=20000)
+
+        assert page.evaluate("document.body.className") == f"{scheme}-mode"
+        assert (
+            page.evaluate(
+                "getComputedStyle(document.body).getPropertyValue('--scalar-color-accent').trim()"
+            )
+            == accent
+        )
+        assert blocked == []
+        browser.close()

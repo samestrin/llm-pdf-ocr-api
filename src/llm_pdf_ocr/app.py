@@ -23,8 +23,14 @@ another origin). The page states this service's real upload limits and how long 
 finished job is kept, filled in from the settings when it is served. A small sample PDF
 for its "Try a sample" button is served at `/static/samples/sample.pdf`.
 `OCR_WEB_PAGE=false` turns the page off for an API-only deployment:
-`/` and its files then answer 404. `GET /v1/capabilities` tells the page which methods
-and vision model names it may offer; never the backend's URL or key.
+`/`, `/docs` and their files then answer 404. `GET /v1/capabilities` tells the page which
+methods and vision model names it may offer; never the backend's URL or key.
+
+`GET /docs` is the API reference: Scalar, vendored in `llm_pdf_ocr/web/scalar/` at a
+pinned version, reading this service's own `/openapi.json`. It loads nothing from
+another origin -- no request proxy, no web fonts, no telemetry -- so it works offline,
+and it goes off with the web page. FastAPI's own Swagger UI and ReDoc are turned off;
+`/openapi.json` is unchanged.
 """
 
 import json
@@ -33,6 +39,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
 from functools import cache
+from html import escape as escape_html
 from pathlib import Path
 from typing import Annotated
 
@@ -89,6 +96,8 @@ app = FastAPI(
     title="llm-pdf-ocr-api",
     version=__version__,
     description="Turn a PDF, scanned or not, into Markdown or JSON, page by page.",
+    docs_url=None,  # /docs is the Scalar reference below; /redoc is gone
+    redoc_url=None,
 )
 app.state.limits = load_limits()
 app.state.web_page = load_web_page()
@@ -103,6 +112,18 @@ app.add_middleware(RequestLog)  # added last, so it is outermost
 
 WEB = Path(__file__).parent / "web"
 PAGE_CSP = "default-src 'self'"
+# Scalar injects three stylesheets while it draws the page and only one of them takes a
+# nonce, so inline styles are allowed here. Every other origin stays blocked, and inline
+# scripts are still refused by default-src.
+DOCS_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'"
+# What the reference is told to do: read this service's spec, and reach nothing else.
+SCALAR_CONFIGURATION = {
+    "url": "/openapi.json",
+    "proxyUrl": None,  # "try it" calls this service directly, not proxy.scalar.com
+    "withDefaultFonts": False,  # no font is fetched from fonts.scalar.com
+    "telemetry": False,
+    "hideClientButton": True,  # no button opens client.scalar.com
+}
 
 
 class _PageFiles(StaticFiles):
@@ -231,6 +252,19 @@ def page(request: Request) -> HTMLResponse:
     }.items():
         html = html.replace("{{" + name + "}}", value)
     return HTMLResponse(html, headers={"Content-Security-Policy": PAGE_CSP})
+
+
+@app.get("/docs", include_in_schema=False)
+def api_reference(request: Request) -> HTMLResponse:
+    """The API reference: Scalar, vendored in `web/scalar/`, reading `/openapi.json`."""
+    if not request.app.state.web_page:
+        raise StarletteHTTPException(status_code=404)
+    html = (WEB / "docs.html").read_text(encoding="utf-8")
+    configuration = escape_html(json.dumps(SCALAR_CONFIGURATION), quote=True)
+    return HTMLResponse(
+        html.replace("{{configuration}}", configuration),
+        headers={"Content-Security-Policy": DOCS_CSP},
+    )
 
 
 @app.get("/v1/capabilities")

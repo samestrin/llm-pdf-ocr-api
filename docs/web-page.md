@@ -35,7 +35,9 @@ The page shares one design system with the owner's other demo apps, taken from l
 
 ## How it is built
 
-It is plain HTML, CSS and JavaScript shipped inside the package (`src/llm_pdf_ocr/web/`, no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network. For an API-only deployment, set `OCR_WEB_PAGE=false`: `/` and the page's files then answer 404, and every API endpoint works as before.
+It is plain HTML, CSS and JavaScript shipped inside the package (`src/llm_pdf_ocr/web/`, no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network. For an API-only deployment, set `OCR_WEB_PAGE=false`: `/`, `/docs` and the page's files then answer 404, and every API endpoint works as before.
+
+The API reference at `/docs` is part of the same family: Scalar, vendored in `src/llm_pdf_ocr/web/scalar/` at a pinned version, reading this service's own `/openapi.json`, with the same violet accent and the same favicon. Its policy is `default-src 'self'; style-src 'self' 'unsafe-inline'` — Scalar injects its own stylesheets while it draws the page — and its configuration turns off Scalar's request proxy, web fonts, telemetry and "open in client" button, so "try it" calls this service directly and the page works with no network. FastAPI's Swagger UI and ReDoc are off; `/redoc` answers 404.
 
 ## Screenshots
 

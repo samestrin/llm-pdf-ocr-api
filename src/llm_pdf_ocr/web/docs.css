@@ -1,0 +1,20 @@
+/*
+ * The API reference's accent, over the theme inside web/scalar/standalone.js.
+ * Scalar ships blue; this app's accent is violet, the same two colours as
+ * web/style.css (--color-accent) and web/favicon.svg.
+ *
+ * Scalar puts .light-mode or .dark-mode on the page and injects its own theme
+ * afterwards, so these selectors name the element carrying the class: they win
+ * by specificity whatever order the styles land in.
+ */
+html.light-mode,
+body.light-mode {
+  --scalar-color-accent: #6d28d9;
+  --scalar-background-accent: #6d28d91f;
+}
+
+html.dark-mode,
+body.dark-mode {
+  --scalar-color-accent: #c4b5fd;
+  --scalar-background-accent: #c4b5fd1f;
+}
