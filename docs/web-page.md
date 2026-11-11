@@ -7,7 +7,7 @@
 | ![The web page in the light theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](screenshot-web-page-light-desktop.png) | ![The web page in the dark theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](screenshot-web-page-dark-desktop.png) |
 | ![The web page in the light theme at phone width, with the upload card, the two pages stacked and the Markdown output](screenshot-web-page-light-phone.png) | ![The web page in the dark theme at phone width, with the upload card, the two pages stacked and the Markdown output](screenshot-web-page-dark-phone.png) |
 
-A page to use the service from a browser: drop or pick a PDF, choose Markdown or JSON and a method, and follow the job's progress. The result shows each page's image as a thumbnail (at most 240 px tall; click it to open the page full size in a new tab) beside its text, the method that read it (named as in the Method menu: Text layer, Tesseract or Vision model), and why it failed if it did; the full Markdown or JSON follows. The Markdown can be copied to the clipboard (which the browser allows on `localhost` or HTTPS), and the result downloaded as `result.md` or `result.json`. The page fits a phone-width screen, where each page's image sits above its text. Page text is shown as text, never as HTML, and a job that has expired is reported as an error.
+A page to use the service from a browser: drop or pick a PDF, choose Markdown or JSON and a method, and follow the job's progress. The result shows each page's image as a thumbnail (at most 240 px tall; click it to open the page full size in a new tab) beside its text, the method that read it (named as in the Method menu: Text layer, Tesseract or Vision model), and why it failed if it did; the full Markdown or JSON follows. A find box above the result searches all of that text without sending anything to the server. The Markdown can be copied to the clipboard (which the browser allows on `localhost` or HTTPS), and the result downloaded as `result.md` or `result.json`. The page fits a phone-width screen, where each page's image sits above its text. Page text is shown as text, never as HTML, and a job that has expired is reported as an error.
 
 ## What is on the page
 
@@ -16,6 +16,15 @@ A page to use the service from a browser: drop or pick a PDF, choose Markdown or
 - **Try a sample** loads a small bundled PDF (`/static/samples/sample.pdf`, a copy of `tests/fixtures/mixed.pdf`, 15 KB) and reads it, so you can see a result without a file of your own. Its four pages show both routes: pages read from the text layer and scanned pages read by Tesseract.
 - Before a file is chosen, the results panel says what you will see and explains each method in one line: Auto, Text layer, Tesseract and, when the operator configured one, Vision model.
 - While a job runs, the status line says "Reading page 2 of 3" with three moving dots after it (just "Reading" until the job knows its pages), above a progress bar. A failure is shown as a red banner with the API's message and its request ID.
+- Once a result is shown, a find box sits above the page cards and stays in reach while you scroll (see below).
+
+## Find in the result
+
+The find box searches each page's text and the whole Markdown or JSON output, whichever is shown. The query is plain text, matched literally (never as a regular expression) and case-insensitively. Every match is highlighted in amber; the current match wears the violet accent. The count beside the box reads "3 of 12", or "No matches" when there are none.
+
+- **Enter** or the **↓** button moves to the next match; **Shift+Enter** or the **↑** button to the previous one. Stepping wraps around at either end, scrolls the match into view, and opens its page if it is collapsed.
+- **Escape** clears the box and every highlight.
+- Everything happens in the browser: typing, counting and stepping never send a request. Typing is debounced (150 ms) and each text is scanned in one pass, so a 500-page result keeps up; `tests/test_browser.py` measures the highlight pass against a 200 ms budget.
 
 ## Theme
 

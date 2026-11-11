@@ -79,6 +79,16 @@
         <p id="status" role="status" aria-live="polite"></p>
         <progress id="progress" hidden></progress>
         <div id="results" hidden>
+          <div class="find-bar" role="search">
+            <input id="find-input" type="search" placeholder="Find in result" aria-label="Find in result"
+              autocomplete="off" aria-describedby="find-count"
+              title="Find in result. Enter: next match. Shift+Enter: previous match. Escape: clear.">
+            <span id="find-count" class="find-count" aria-live="polite"></span>
+            <button id="find-prev" class="secondary find-step" type="button" disabled
+              aria-label="Previous match" title="Previous match (Shift+Enter)">&#8593;</button>
+            <button id="find-next" class="secondary find-step" type="button" disabled
+              aria-label="Next match" title="Next match (Enter)">&#8595;</button>
+          </div>
           <ol id="pages"></ol>
           <h2>Output</h2>
           <div class="actions">

@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 import socket
@@ -518,7 +519,7 @@ def test_every_control_has_an_accessible_name(live_server, page):
 
     controls = page.locator("input, select, button")
     ids = [controls.nth(n).get_attribute("id") for n in range(controls.count())]
-    assert set(ids) == CONTROLS | {"model"}
+    assert set(ids) == CONTROLS | {"model", "find-input", "find-prev", "find-next"}
     names = {
         "theme-toggle": "Light theme" if page.evaluate(_DARK) else "Dark theme",
         "file": "PDF file",
@@ -527,6 +528,9 @@ def test_every_control_has_an_accessible_name(live_server, page):
         "method": "Method",
         "model": "Model",
         "submit": "Extract",
+        "find-input": "Find in result",
+        "find-prev": "Previous match",
+        "find-next": "Next match",
         "copy": "Copy Markdown",
         "download-md": "Download Markdown",
         "download-json": "Download JSON",
@@ -736,3 +740,354 @@ def test_the_vision_line_is_plain(live_server, page):
     expect(page.locator("#vision-help dd")).to_have_text(
         "An AI vision model reads the page image. The image is sent to that model."
     )
+
+
+# Find in the result: a plain-text, case-insensitive search over the page texts and the
+# Markdown or JSON output, entirely in the browser.
+
+
+def _hits(text: str, query: str) -> int:
+    """Non-overlapping, case-insensitive occurrences, counted as the find box counts them."""
+    return text.lower().count(query.lower())
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "json"])
+def test_find_highlights_every_match_in_the_page_texts_and_the_output(
+    live_server, page, fresh_jobs, fmt
+):
+    _result_doc(live_server, page, fmt=fmt)
+    output = page.locator("#result").text_content()
+    expected = _hits(PAGE_ONE, "page") + _hits(PAGE_TWO, "page") + _hits(output, "page")
+
+    page.fill("#find-input", "page")
+
+    expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
+    marks = page.locator("mark.find-match")
+    expect(marks).to_have_count(expected)
+    assert all(t.lower() == "page" for t in marks.all_text_contents())
+    expect(marks.nth(0)).to_have_class(re.compile(r"\bcurrent\b"))
+    expect(page.locator(".page-result").nth(0).locator("mark")).to_have_count(
+        _hits(PAGE_ONE, "page")
+    )
+    expect(page.locator("#result mark")).to_have_count(_hits(output, "page"))
+    # Highlighting never changes the text itself.
+    expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
+    assert page.locator("#result").text_content() == output
+    expect(page.locator("#find-prev")).to_be_enabled()
+    expect(page.locator("#find-next")).to_be_enabled()
+
+
+def test_find_steps_with_keys_and_buttons_wrapping_and_scrolling(live_server, page, fresh_jobs):
+    texts = [f"Needle number {n} hides on this page." for n in range(1, 7)]
+    _extract(page, live_server, _pdf(*texts))
+    _done(page)
+    total = 12  # one match per page card, one per page in the Markdown output
+
+    box = page.locator("#find-input")
+    page.fill("#find-input", "needle")
+    expect(page.locator("#find-count")).to_have_text(f"1 of {total}")
+
+    box.press("Enter")
+    expect(page.locator("#find-count")).to_have_text(f"2 of {total}")
+    current = page.locator("mark.find-match.current")
+    expect(current).to_have_count(1)
+    expect(current).to_have_text("Needle")
+    expect(current).to_be_in_viewport()
+    expect(page.locator(".page-result").nth(1).locator("mark.current")).to_have_count(1)
+
+    box.press("Shift+Enter")
+    expect(page.locator("#find-count")).to_have_text(f"1 of {total}")
+    box.press("Shift+Enter")  # before the first wraps to the last, in the output
+    expect(page.locator("#find-count")).to_have_text(f"{total} of {total}")
+    expect(page.locator("#result mark.current")).to_have_count(1)
+    expect(page.locator("mark.current")).to_be_in_viewport()
+    assert page.evaluate("window.scrollY") > 0
+
+    page.click("#find-next")  # past the last wraps to the first
+    expect(page.locator("#find-count")).to_have_text(f"1 of {total}")
+    page.click("#find-prev")
+    expect(page.locator("#find-count")).to_have_text(f"{total} of {total}")
+    expect(page.locator("mark.current")).to_have_count(1)
+
+
+def test_find_enter_right_after_typing_steps_without_waiting_for_the_debounce(
+    live_server, page, fresh_jobs
+):
+    texts = [f"Needle number {n} hides on this page." for n in range(1, 7)]
+    _extract(page, live_server, _pdf(*texts))
+    _done(page)
+    total = 12  # one match per page card, one per page in the Markdown output
+
+    # Count every runFind execution, including the synchronous one stepFind runs when
+    # Enter arrives before the debounce; the timer-based pass clock cannot see that one.
+    assert page.evaluate("typeof window.runFind") == "function"
+    page.evaluate("""() => {
+      window.__findRuns = 0;
+      const real = window.runFind;
+      window.runFind = (...args) => {
+        window.__findRuns += 1;
+        return real(...args);
+      };
+    }""")
+    # Type the whole query and press Enter in one JS turn, so the 150 ms debounce
+    # cannot have fired: the step must search the new query itself, exactly once.
+    page.evaluate("""() => {
+      const input = document.getElementById("find-input");
+      input.focus();
+      for (const ch of "needle") {
+        input.value += ch;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+      );
+    }""")
+
+    expect(page.locator("#find-count")).to_have_text(f"2 of {total}")
+    expect(page.locator("mark.find-match")).to_have_count(total)
+    current = page.locator("mark.find-match.current")
+    expect(current).to_have_count(1)
+    expect(current).to_be_in_viewport()
+    expect(page.locator(".page-result").nth(1).locator("mark.current")).to_have_count(1)
+    assert page.evaluate("window.__findRuns") == 1
+    page.wait_for_timeout(300)  # longer than the debounce: no second pass may arrive
+    expect(page.locator("#find-count")).to_have_text(f"2 of {total}")
+    assert page.evaluate("window.__findRuns") == 1
+
+
+def test_find_escape_clears_the_query_and_every_highlight(live_server, page, fresh_jobs):
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    page.fill("#find-input", "page")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+
+    page.locator("#find-input").press("Escape")
+
+    expect(page.locator("#find-input")).to_have_value("")
+    expect(page.locator("mark.find-match")).to_have_count(0)
+    expect(page.locator("#find-count")).to_have_text("")
+    expect(page.locator("#find-prev")).to_be_disabled()
+    expect(page.locator("#find-next")).to_be_disabled()
+    expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
+    assert page.evaluate("document.activeElement.id") == "find-input"
+
+
+def test_find_backspacing_to_an_empty_query_clears_and_the_page_stays_alive(
+    live_server, page, fresh_jobs
+):
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    output = page.locator("#result").text_content()
+    box = page.locator("#find-input")
+    box.fill("page")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+    expect(page.locator("mark.find-match").first).to_be_visible()
+
+    for _ in range(len("page")):  # delete the query the way a user does, key by key
+        box.press("Backspace")
+
+    expect(page.locator("#find-input")).to_have_value("")
+    expect(page.locator("#find-count")).to_have_text("")
+    expect(page.locator("mark.find-match")).to_have_count(0)
+    expect(page.locator("#find-prev")).to_be_disabled()
+    expect(page.locator("#find-next")).to_be_disabled()
+    # The texts are restored exactly, and the page still responds and searches again.
+    expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
+    assert page.locator("#result").text_content() == output
+    assert page.evaluate("1 + 1") == 2
+    expected = _hits(PAGE_ONE, "hello") + _hits(PAGE_TWO, "hello") + _hits(output, "hello")
+    box.fill("hello")
+    expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
+
+
+def test_find_with_no_match_says_so_and_cannot_step(live_server, page, fresh_jobs):
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+
+    page.fill("#find-input", "zzz-no-such-word")
+
+    expect(page.locator("#find-count")).to_have_text("No matches")
+    expect(page.locator("mark.find-match")).to_have_count(0)
+    expect(page.locator("#find-prev")).to_be_disabled()
+    expect(page.locator("#find-next")).to_be_disabled()
+    page.locator("#find-input").press("Enter")
+    expect(page.locator("#find-count")).to_have_text("No matches")
+
+    page.fill("#find-input", "page")  # a new query searches again
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+
+
+def test_find_is_literal_text_not_a_regex(live_server, page, fresh_jobs):
+    text = "a.c and abc and a.c; 1.50 not 1x50; [x] not x; (y) not y."
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    _extract(page, live_server, _pdf(text))
+    _done(page)
+    output = page.locator("#result").text_content()
+
+    for query in ("a.c", "A.C", "1.50", "[x]", "(y)"):
+        page.fill("#find-input", query)
+        expected = _hits(text, query) + _hits(output, query)
+        expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
+        marks = page.locator("mark.find-match")
+        expect(marks).to_have_count(expected)
+        # Consecutive queries can share a count ("1 of 2"), so wait for the new marks
+        # themselves, not only the count, before reading them.
+        expect(marks.nth(0)).to_have_text(re.compile(rf"^{re.escape(query)}$", re.IGNORECASE))
+        assert all(t.lower() == query.lower() for t in marks.all_text_contents())
+    assert errors == []
+
+
+def test_find_never_sends_anything_to_the_server(live_server, page, fresh_jobs):
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    page.wait_for_load_state("networkidle")
+    seen = []
+    page.on("request", lambda request: seen.append(request.url))
+
+    page.fill("#find-input", "page")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+    box = page.locator("#find-input")
+    box.press("Enter")
+    box.press("Shift+Enter")
+    page.click("#find-next")
+    page.click("#find-prev")
+    box.press("Escape")
+    page.wait_for_timeout(300)  # longer than the debounce, so a late pass would show
+
+    # Scrolling can load a lazy page thumbnail; that is the result's own image, not find
+    # traffic. Nothing else may leave the page.
+    assert [url for url in seen if not re.search(r"/pages/\d+\.png$", url)] == []
+
+
+_PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+)
+
+# Measure the debounced highlight pass itself: wrap setTimeout so only the find box's
+# 150 ms timer is timed. A wall-clock bound per keystroke would include the debounce and
+# the CI runner's timer jitter; the work the box does per keystroke is what must be fast.
+_FIND_PASS_CLOCK = """() => {
+  window.__findPasses = [];
+  const real = window.setTimeout.bind(window);
+  window.setTimeout = (fn, ms, ...rest) => real(() => {
+    if (ms !== 150) return fn();
+    const start = performance.now();
+    fn();
+    window.__findPasses.push(performance.now() - start);
+  }, ms, ...rest);
+}"""
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "json"])
+def test_find_on_500_pages_is_one_pass_per_burst_under_200_ms(live_server, page, fresh_jobs, fmt):
+    doc = Document(
+        pages=[
+            Page(
+                number=n,
+                status="ok",
+                method=Method.TEXT_LAYER,
+                text=f"Page {n} of the long document hides a needle in its text.",
+            )
+            for n in range(1, 501)
+        ]
+    )
+    page.route(
+        re.compile(r"/pages/\d+\.png$"),
+        lambda route: route.fulfill(status=200, content_type="image/png", body=_PNG_1PX),
+    )
+    _first_poll(
+        page,
+        {
+            "status": "done",
+            "pages_total": 500,
+            "pages_done": 500,
+            "result": json.loads(render_json(doc)),
+            "error": None,
+        },
+    )
+    _extract(page, live_server, _pdf(PAGE_ONE), fmt=fmt)
+    _done(page)
+    expect(page.locator(".page-result")).to_have_count(500)
+    output = page.locator("#result").text_content()
+    expected = 500 + _hits(output, "needle")
+
+    page.evaluate(_FIND_PASS_CLOCK)
+    # A burst of keystrokes with no gap: the debounce must coalesce them into one pass.
+    page.evaluate("""() => {
+      const input = document.getElementById("find-input");
+      input.focus();
+      for (const ch of "needle") {
+        input.value += ch;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }""")
+    expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
+    expect(page.locator("mark.find-match")).to_have_count(expected)
+    passes = page.evaluate("window.__findPasses")
+    assert len(passes) == 1, passes
+    assert passes[0] < 200, passes
+
+    box = page.locator("#find-input")
+    box.press("s")  # "needles": every highlight must be restored in one more pass
+    expect(page.locator("#find-count")).to_have_text("No matches")
+    expect(page.locator("mark.find-match")).to_have_count(0)
+    box.press("Backspace")
+    expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
+    passes = page.evaluate("window.__findPasses")
+    assert len(passes) == 3, passes
+    assert all(t < 200 for t in passes), passes
+
+    box.press("Enter")  # stepping moves the current mark, it never re-highlights
+    expect(page.locator("#find-count")).to_have_text(f"2 of {expected}")
+    assert len(page.evaluate("window.__findPasses")) == 3
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_find_box_and_highlights_meet_wcag_aa_in_both_themes(live_server, page, fresh_jobs, scheme):
+    page.emulate_media(color_scheme=scheme)
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    page.fill("#find-input", "page")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+
+    seen = page.evaluate(_CONTRAST, "select, #find-input")
+    whats = {s["what"] for s in seen}
+    assert {"find-input", "find-count", "find-prev", "find-next"} <= whats
+    assert {"find-match", "find-match current"} <= whats
+    low = [s for s in seen if s["ratio"] < 4.5]
+    assert low == [], low
+
+
+@pytest.mark.parametrize("width", [375, 320])
+def test_find_bar_fits_and_steps_at_phone_width(live_server, page, fresh_jobs, width):
+    page.set_viewport_size({"width": width, "height": 800})
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    page.fill("#find-input", "page")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+
+    widths = page.evaluate(_WIDTHS)
+    assert widths[0] <= widths[1] == width
+    for selector in ("#find-input", "#find-count", "#find-prev", "#find-next"):
+        box = page.locator(selector).bounding_box()
+        assert box["x"] >= 0 and box["x"] + box["width"] <= width, selector
+    page.locator("#find-input").press("Enter")
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^2 of \d+$"))
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_find_controls_are_keyboard_reachable_with_a_focus_ring(
+    live_server, page, fresh_jobs, scheme
+):
+    page.emulate_media(color_scheme=scheme)
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
+    _done(page)
+    page.fill("#find-input", "page")  # an active query enables the step buttons
+    expect(page.locator("#find-count")).to_have_text(re.compile(r"^1 of \d+$"))
+
+    for element_id in ("find-input", "find-prev", "find-next"):
+        _tab_to(page, element_id)
+        ring = page.evaluate(_RING)
+        assert ring["id"] == element_id
+        assert ring["style"] not in ("none", "auto") and ring["width"] >= 2, ring
