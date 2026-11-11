@@ -1,24 +1,56 @@
+/*
+ * Design tokens copied from llm-pdf-chatbot frontend/src/theme.css at
+ * e1f5a988f6070a7519b14eb0c2e9b9d5afffc580, the shared base of the owner's demo apps.
+ * Changed for this app: the accent, primary and focus colours are violet (this app's own
+ * accent), and --color-danger-subtle is added for the error banner.
+ *
+ * Each colour is `light-dark(light, dark)`. The page follows the system scheme
+ * (`color-scheme: light dark`) unless the theme toggle sets `data-theme`.
+ * Text colours pass WCAG AA (4.5:1) on the backgrounds they sit on in both themes;
+ * tests/test_browser.py measures them.
+ */
 :root {
   color-scheme: light dark;
-  --bg: #f7f7f5;
-  --fg: #1d1d1f;
-  --muted: #6b6b70;
-  --card: #ffffff;
-  --line: #d8d8dc;
-  --accent: #2f6fde;
-  --accent-fg: #ffffff;
-  --accent-soft: #e8effc;
-  --error: #c62828;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 2px 8px rgb(0 0 0 / 0.04);
 
-  /* Type scale: a 1.2 ratio from a 1rem body. */
+  /* Colour */
+  --color-bg: light-dark(#f4f5f7, #0f1115);
+  --color-surface: light-dark(#ffffff, #171a20);
+  --color-surface-sunken: light-dark(#eef0f3, #1f232b);
+  --color-text: light-dark(#15171c, #e6e8ec);
+  --color-muted: light-dark(#545a65, #a1a7b3);
+  --color-border: light-dark(#dcdfe5, #2c313a);
+  --color-border-strong: light-dark(#7c8390, #6f7785);
+  --color-accent: light-dark(#6d28d9, #c4b5fd);
+  --color-accent-hover: light-dark(#5b21b6, #ddd6fe);
+  --color-accent-subtle: light-dark(#f1ecfd, #2a2140);
+  --color-on-accent: light-dark(#ffffff, #0b1220);
+  /* Primary buttons: a solid fill in both themes, white text at 4.5:1 or more. */
+  --color-primary: light-dark(#6d28d9, #7c3aed);
+  --color-primary-hover: light-dark(#5b21b6, #6d28d9);
+  --color-on-primary: light-dark(#ffffff, #ffffff);
+  /* Disabled controls: a neutral surface and muted text, not a faded primary. */
+  --color-disabled: light-dark(#e4e7ec, #2a2f38);
+  --color-on-disabled: light-dark(#545a65, #a1a7b3);
+  --color-danger: light-dark(#b3261e, #ff8a80);
+  --color-danger-subtle: light-dark(#fdecea, #2d1717);
+  --color-warn: light-dark(#8a4a00, #f0a640);
+  --color-focus: light-dark(#6d28d9, #c4b5fd);
+  --color-shadow: light-dark(rgb(16 24 40 / 0.08), rgb(0 0 0 / 0.45));
+
+  /* Type */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-base: 1rem;
-  --text-lg: 1.2rem;
-  --text-xl: 1.44rem;
-  --text-2xl: 1.75rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --leading-tight: 1.25;
+  --leading: 1.5;
+  --weight-medium: 500;
+  --weight-bold: 650;
 
-  /* Spacing: a 4 px step. */
+  /* Spacing */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -26,171 +58,450 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
 
-  --radius-sm: 0.375rem;
-  --radius: 0.75rem;
-  --ring: 3px solid var(--accent);
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
 
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: var(--text-base);
+  /* Elevation */
+  --shadow-1: 0 1px 2px var(--color-shadow), 0 1px 3px var(--color-shadow);
+  --shadow-2: 0 4px 12px var(--color-shadow), 0 2px 4px var(--color-shadow);
+
+  /* Focus ring */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring: var(--focus-ring-width) solid var(--color-focus);
+
+  /* Layout */
+  --page-max: 90rem;
+  --sidebar: 22rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161618;
-    --fg: #ececf0;
-    --muted: #9a9aa2;
-    --card: #222226;
-    --line: #3a3a40;
-    --accent: #6b9cff;
-    --accent-fg: #0d1526;
-    --accent-soft: #1f2a42;
-    --error: #ff6b6b;
-    --shadow: none;
-  }
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
-* { box-sizing: border-box; }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  line-height: 1.5;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading);
 }
 
-/* One focus ring for every control, shown only for keyboard focus. */
-:focus-visible { outline: var(--ring); outline-offset: 2px; }
-.drop:has(input:focus-visible) { outline: var(--ring); outline-offset: 2px; }
-
-header {
-  border-bottom: 1px solid var(--line);
-  background: var(--card);
-}
-
-header .bar {
-  max-width: 56rem;
+.app {
+  max-width: var(--page-max);
   margin: 0 auto;
   padding: var(--space-4);
+  overflow-wrap: anywhere;
 }
 
-h1 { margin: 0; font-size: var(--text-2xl); line-height: 1.2; letter-spacing: -0.01em; }
-header p { margin: var(--space-1) 0 0; color: var(--muted); }
-
-main {
-  max-width: 56rem;
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-4) var(--space-6);
+h1,
+h2,
+h3 {
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-bold);
 }
 
-/* The one card style: the form, each page result and the output. */
-form, .page-result, pre {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+h1 {
+  font-size: var(--text-xl);
+  margin: 0;
 }
+
+h2 {
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-3);
+}
+
+h3 {
+  font-size: var(--text-base);
+  margin: 0 0 var(--space-2);
+}
+
+p {
+  margin: var(--space-2) 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Controls */
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  max-width: 100%;
+}
+
+/* Primary: Extract and Copy. Hover, focus and disabled each look different; disabled is
+   neutral, never a faded primary. */
+button {
+  cursor: pointer;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border: 1px solid var(--color-primary);
+  font-weight: var(--weight-medium);
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+button:disabled {
+  background: var(--color-disabled);
+  color: var(--color-on-disabled);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+}
+
+select:disabled {
+  cursor: not-allowed;
+  color: var(--color-on-disabled);
+  background: var(--color-disabled);
+}
+
+/* Secondary: the sample, downloads and the theme toggle, outlined on the surface. */
+button.secondary,
+.theme-toggle {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+
+button.secondary:hover:not(:disabled),
+.theme-toggle:hover:not(:disabled) {
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-strong);
+}
+
+button.secondary:disabled {
+  background: var(--color-disabled);
+  color: var(--color-on-disabled);
+  border-color: var(--color-border);
+}
+
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The file input is visually hidden, so its drop zone shows the ring. */
+.drop:has(input:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Header: the mark and the name, the theme toggle on the right. */
+
+.app-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.logo-mark {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+}
+
+.logo-mark-page {
+  fill: var(--color-accent);
+}
+
+.logo-mark-fold,
+.logo-mark-scan {
+  fill: var(--color-text);
+}
+
+.logo-mark-line {
+  fill: var(--color-bg);
+}
+
+.theme-toggle {
+  margin-left: auto;
+}
+
+/* Page layout: the form beside the results on a desktop; below that the two stack. */
+
+.app-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (min-width: 64rem) {
+  .app-layout {
+    grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  }
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+/* The form */
 
 form {
   display: grid;
   gap: var(--space-4);
-  padding: var(--space-5);
+}
+
+form h2 {
+  margin: 0;
+}
+
+form > button {
+  justify-self: start;
 }
 
 .drop {
+  position: relative;
   display: grid;
   place-items: center;
   align-content: center;
   gap: var(--space-1);
-  min-height: 11rem;
+  min-height: 10rem;
   padding: var(--space-5) var(--space-4);
-  border: 2px dashed var(--line);
-  border-radius: var(--radius);
-  color: var(--muted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-muted);
   text-align: center;
-  overflow-wrap: anywhere;
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s;
 }
 
 .drop::before {
   content: "";
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
   margin-bottom: var(--space-2);
-  border: 2px solid currentColor;
+  border: 2px solid var(--color-accent);
   border-radius: var(--radius-sm);
-  background: linear-gradient(currentColor, currentColor) center 0.9rem / 0.9rem 2px no-repeat,
-    linear-gradient(currentColor, currentColor) center 1.35rem / 0.9rem 2px no-repeat;
+  background: linear-gradient(var(--color-accent), var(--color-accent)) center 0.8rem / 0.9rem 2px no-repeat,
+    linear-gradient(var(--color-accent), var(--color-accent)) center 1.25rem / 0.9rem 2px no-repeat;
 }
 
-#drop-text { font-size: var(--text-lg); font-weight: 600; color: var(--fg); }
-.drop-hint { font-size: var(--text-sm); }
-
-.drop:hover, .drop.over, .drop:focus-within {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--fg);
+#drop-text {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
 }
 
-.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop-hint {
+  font-size: var(--text-sm);
+}
 
-.options { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.drop:hover,
+.drop.over,
+.drop:focus-within {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+.drop input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
 .options label {
   display: grid;
   gap: var(--space-1);
-  flex: 1 1 9rem;
+  flex: 1 1 8rem;
   min-width: 0;
   font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
 }
 
-select, button { font: inherit; border-radius: var(--radius-sm); }
-
-select {
+.options select {
   width: 100%;
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--fg);
+  color: var(--color-text);
   font-weight: 400;
 }
 
-/* The one button style. */
-button {
-  justify-self: start;
-  min-height: 2.5rem;
-  padding: var(--space-2) var(--space-5);
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-  cursor: pointer;
-  transition: filter 0.15s;
-}
-
-button:hover:not(:disabled) { filter: brightness(1.08); }
-button:disabled { opacity: 0.6; cursor: progress; }
-
-[hidden] { display: none !important; }
-
-#output { margin-top: var(--space-5); }
-#empty { margin: 0; color: var(--muted); }
-#status { margin: 0 0 var(--space-3); color: var(--muted); }
-#status:empty { display: none; }
-#status.error { color: var(--error); font-weight: 600; }
-
-pre {
+.privacy {
   margin: 0;
-  overflow-x: auto;
-  padding: var(--space-4);
+  color: var(--color-muted);
   font-size: var(--text-sm);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
-progress { width: 100%; accent-color: var(--accent); }
+/* Results: the empty state, the status line, then one card per page. */
+
+.empty-state {
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.empty-state p {
+  color: var(--color-muted);
+  margin: 0 0 var(--space-4);
+}
+
+.methods {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.methods div {
+  display: grid;
+  grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.methods dt {
+  font-weight: var(--weight-medium);
+}
+
+.methods dd {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+#status {
+  margin: 0 0 var(--space-3);
+  color: var(--color-muted);
+}
+
+#status:empty {
+  display: none;
+}
+
+/* Failure: a banner, not just red text. */
+#status.error {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+  font-weight: var(--weight-medium);
+}
+
+progress {
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--space-4);
+  accent-color: var(--color-accent);
+}
+
+/* Reading: three dots bounce after the words, like a moving ellipsis. */
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  height: 1em;
+  padding-bottom: 0.2em;
+}
+
+.thinking-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .thinking-dot {
+    animation: thinking-bounce 1.2s ease-in-out infinite;
+  }
+
+  .thinking-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .thinking-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+@keyframes thinking-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Whoever asks for less motion gets none: no animation, transition or smooth scroll. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 #pages {
   display: grid;
@@ -202,35 +513,112 @@ progress { width: 100%; accent-color: var(--accent); }
 
 .page-result {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
-.page-result.failed { border-color: var(--error); }
+/* Wide enough for both: the page image beside its text. */
+@media (min-width: 48rem) {
+  .page-result {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+/* A thumbnail: the text card, not the image, sets the row's height. */
+.page-figure {
+  max-width: 20rem;
+}
+
+.page-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.page-result.failed {
+  border-color: var(--color-danger);
+}
 
 .page-image {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
-  border: 1px solid var(--line);
+  max-height: 240px;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: #fff; /* a PDF page is white in both themes */
 }
 
-.no-image { margin: 0; color: var(--muted); font-size: var(--text-sm); }
-.page-body { min-width: 0; }
-.page-body h3 { margin: 0 0 var(--space-1); font-size: var(--text-lg); }
-.method, .fallback { margin: 0 0 var(--space-2); color: var(--muted); font-size: var(--text-sm); }
-.failure { margin: 0; color: var(--error); font-weight: 600; }
-.page-body .text { padding: var(--space-3); background: var(--bg); box-shadow: none; }
+.no-image {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
 
-.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.page-body {
+  min-width: 0;
+}
 
-#results h2 { font-size: var(--text-xl); margin: 0 0 var(--space-3); }
+.method,
+.fallback {
+  margin: 0 0 var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.failure {
+  margin: 0;
+  color: var(--color-danger);
+  font-weight: var(--weight-medium);
+}
+
+pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.page-body .text {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+/* Footer */
+
+.app-footer {
+  margin-top: var(--space-6);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
 
 @media (max-width: 40rem) {
-  form { padding: var(--space-4); }
-  .page-result { grid-template-columns: minmax(0, 1fr); }
-  .actions button { flex: 1 1 auto; }
+  .actions button {
+    flex: 1 1 auto;
+  }
+
+  .methods div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }

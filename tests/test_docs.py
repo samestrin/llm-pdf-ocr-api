@@ -141,6 +141,8 @@ def test_the_readme_local_build_and_run_is_what_the_ci_docker_job_runs():
     assert build in ci and run in ci
 
 
-def test_the_readme_version_badge_says_1_0_0():
-    assert "Version-1.0.0-blue" in README
+def test_the_readme_badges_are_ci_latest_release_and_license_only():
+    badges = re.findall(r'<img src="([^"]+)" alt="([^"]+)"></a>', README)
+    assert [alt for _, alt in badges] == ["CI", "Latest release", "License: MIT"]
+    assert "img.shields.io/github/v/release/samestrin/llm-pdf-ocr-api" in badges[1][0]
     assert "0.0.1-blue" not in README
