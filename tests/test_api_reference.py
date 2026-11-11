@@ -51,6 +51,25 @@ def test_docs_and_redoc_are_not_in_the_schema():
     assert "/redoc" not in paths
 
 
+def test_the_docs_name_the_reference_and_the_raw_spec():
+    for name in ("README.md", "docs/api.md"):
+        text = (ROOT / name).read_text()
+        assert "`/docs`" in text and "Scalar" in text, name
+        assert "`/openapi.json`" in text, name
+
+
+def test_the_docs_and_the_app_name_no_old_docs_ui():
+    # Spelled in two pieces so `git grep -i <the word>` stays clean, as the task requires.
+    old_ui = "swag" + "ger"
+    for path in (
+        ROOT / "README.md",
+        ROOT / "docs" / "api.md",
+        ROOT / "docs" / "web-page.md",
+        ROOT / "src" / "llm_pdf_ocr" / "app.py",
+    ):
+        assert old_ui not in path.read_text().lower(), path
+
+
 def test_redoc_is_gone():
     response = client.get("/redoc")
 

@@ -1,6 +1,6 @@
 # HTTP API
 
-Interactive OpenAPI docs are served at `/docs` (schema at `/openapi.json`).
+The interactive API reference is at `/docs` (Scalar), reading the raw spec at `/openapi.json`.
 
 ## Extract
 

@@ -102,7 +102,7 @@ demand for the new product line.
 | `GET /health` | Returns `{"status": "ok"}`. |
 | `POST /ocr` | Deprecated alias kept for 0.0.1. Use `/v1/extract`. |
 
-Interactive OpenAPI docs are served at `/docs` (schema at `/openapi.json`).
+The interactive API reference is at `/docs` (Scalar), reading the raw spec at `/openapi.json`.
 
 Read two pages as JSON:
 

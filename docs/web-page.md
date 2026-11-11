@@ -15,6 +15,7 @@ A page to use the service from a browser: drop or pick a PDF, choose Markdown or
 - The form states this service's real limits, filled in from `OCR_MAX_FILE_MB` and `OCR_MAX_PAGES` when the page is served (for example "One PDF, up to 50 MB and 500 pages."), and says what happens to your file: it is dropped when its job ends, and the text and page images are deleted `OCR_JOB_TTL_SECONDS` later (shown in words, such as "1 hour").
 - **Try a sample** loads a small bundled PDF (`/static/samples/sample.pdf`, a copy of `tests/fixtures/mixed.pdf`, 15 KB) and reads it, so you can see a result without a file of your own. Its four pages show both routes: pages read from the text layer and scanned pages read by Tesseract.
 - Before a file is chosen, the results panel says what you will see and explains each method in one line: Auto, Text layer, Tesseract and, when the operator configured one, Vision model.
+- The footer links to the API reference at `/docs`.
 - While a job runs, the status line says "Reading page 2 of 3" with three moving dots after it (just "Reading" until the job knows its pages), above a progress bar. A failure is shown as a red banner with the API's message and its request ID.
 - Once a result is shown, a find box sits above the page cards and stays in reach while you scroll (see below).
 
@@ -46,7 +47,7 @@ The page shares one design system with the owner's other demo apps, taken from l
 
 It is plain HTML, CSS and JavaScript shipped inside the package (`src/llm_pdf_ocr/web/`, no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network. For an API-only deployment, set `OCR_WEB_PAGE=false`: `/`, `/docs` and the page's files then answer 404, and every API endpoint works as before.
 
-The API reference at `/docs` is part of the same family: Scalar, vendored in `src/llm_pdf_ocr/web/scalar/` at a pinned version, reading this service's own `/openapi.json`, with the same violet accent and the same favicon. Its policy is `default-src 'self'; style-src 'self' 'unsafe-inline'` — Scalar injects its own stylesheets while it draws the page — and its configuration turns off Scalar's request proxy, web fonts, telemetry and "open in client" button, so "try it" calls this service directly and the page works with no network. FastAPI's Swagger UI and ReDoc are off; `/redoc` answers 404.
+The API reference at `/docs` is part of the same family: Scalar, vendored in `src/llm_pdf_ocr/web/scalar/` at a pinned version, reading this service's own `/openapi.json`, with the same violet accent and the same favicon. Its policy is `default-src 'self'; style-src 'self' 'unsafe-inline'` — Scalar injects its own stylesheets while it draws the page — and its configuration turns off Scalar's request proxy, web fonts, telemetry and "open in client" button, so "try it" calls this service directly and the page works with no network. FastAPI's own docs pages and ReDoc are off; `/redoc` answers 404.
 
 ## Screenshots
 
