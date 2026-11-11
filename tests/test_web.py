@@ -70,6 +70,15 @@ def test_page_has_no_inline_script_or_style_the_policy_would_block():
     assert " style=" not in html
 
 
+def test_page_footer_links_to_the_api_reference():
+    html = client.get("/").text
+
+    footer = re.search(r'<footer class="app-footer">(.*?)</footer>', html, re.S)
+    assert footer, "the page has no footer"
+    assert '<a href="/docs">API reference</a>' in footer[1]
+    assert client.get("/docs").status_code == 200
+
+
 def test_page_files_ship_inside_the_package():
     names = {p.name for p in WEB.iterdir()}
 
