@@ -1,0 +1,274 @@
+{
+  "/health": {
+    "get": {
+      "description": "Report that the service is up.",
+      "operationId": "health_health_get",
+      "responses": {
+        "200": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "title": "Response Health Health Get",
+                "type": "object"
+              }
+            }
+          },
+          "description": "Successful Response"
+        }
+      },
+      "summary": "Health"
+    }
+  },
+  "/ocr": {
+    "post": {
+      "deprecated": true,
+      "description": "Deprecated alias kept for 0.0.1: the whole PDF's text as `{\"text\": ...}`.\n\n`failed_pages` lists the pages whose text is missing. Use `POST /v1/extract`.\nThe 0.0.1 `model` and image fields are ignored; nothing is downloaded.\nPages are routed as `method=auto` on `/v1/extract`.",
+      "operationId": "ocr_ocr_post",
+      "requestBody": {
+        "content": {
+          "multipart/form-data": {
+            "schema": {
+              "$ref": "#/components/schemas/Body_ocr_ocr_post"
+            }
+          }
+        },
+        "required": true
+      },
+      "responses": {
+        "200": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Response Ocr Ocr Post",
+                "type": "object"
+              }
+            }
+          },
+          "description": "Successful Response"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          },
+          "description": "Validation Error"
+        }
+      },
+      "summary": "Ocr"
+    }
+  },
+  "/v1/capabilities": {
+    "get": {
+      "description": "The methods this service offers, and the vision model names a caller may pick.\n\n`vision` is listed only when a vision model is configured. Nothing else about the\nbackend is given: no URL and no key.",
+      "operationId": "capabilities_v1_capabilities_get",
+      "responses": {
+        "200": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": "Response Capabilities V1 Capabilities Get",
+                "type": "object"
+              }
+            }
+          },
+          "description": "Successful Response"
+        }
+      },
+      "summary": "Capabilities"
+    }
+  },
+  "/v1/extract": {
+    "post": {
+      "description": "Extract a PDF's text page by page: from the text layer, a vision model or Tesseract.",
+      "operationId": "extract_v1_extract_post",
+      "requestBody": {
+        "content": {
+          "multipart/form-data": {
+            "schema": {
+              "$ref": "#/components/schemas/Body_extract_v1_extract_post"
+            }
+          }
+        },
+        "required": true
+      },
+      "responses": {
+        "200": {
+          "content": {
+            "application/json": {},
+            "text/markdown": {}
+          },
+          "description": "One section or entry per page, each naming how it was read."
+        },
+        "400": {
+          "description": "The PDF cannot be read, the page range is bad, the model is not allowed, or `vision` was asked for and no vision model is configured."
+        },
+        "413": {
+          "description": "The file is too large, or too many pages are selected."
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          },
+          "description": "Validation Error"
+        }
+      },
+      "summary": "Extract"
+    }
+  },
+  "/v1/jobs": {
+    "post": {
+      "description": "Queue a PDF to be read like `/v1/extract`, and answer at once with the job's id.\n\nThe request is checked first, so a bad PDF, page range, model or a request over\na limit is refused here and no job is made.",
+      "operationId": "create_job_v1_jobs_post",
+      "requestBody": {
+        "content": {
+          "multipart/form-data": {
+            "schema": {
+              "$ref": "#/components/schemas/Body_create_job_v1_jobs_post"
+            }
+          }
+        },
+        "required": true
+      },
+      "responses": {
+        "202": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Response Create Job V1 Jobs Post",
+                "type": "object"
+              }
+            }
+          },
+          "description": "The job is queued. `Location` is where to follow it."
+        },
+        "400": {
+          "description": "As for `/v1/extract`."
+        },
+        "413": {
+          "description": "As for `/v1/extract`."
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          },
+          "description": "Validation Error"
+        },
+        "429": {
+          "description": "The service holds as many jobs as it may. Try again later."
+        }
+      },
+      "summary": "Create Job"
+    }
+  },
+  "/v1/jobs/{job_id}": {
+    "get": {
+      "description": "A job's status and progress per page; `result` is set once it is `done`.\n\n`result` is the Markdown text, or the JSON document `/v1/extract` would return.\nA `failed` job has an `error`. Once a job has been finished for\n`OCR_JOB_TTL_SECONDS`, it and its result are gone.",
+      "operationId": "get_job_v1_jobs__job_id__get",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "job_id",
+          "required": true,
+          "schema": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "Successful Response"
+        },
+        "404": {
+          "description": "No job with this id, or it has expired."
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          },
+          "description": "Validation Error"
+        }
+      },
+      "summary": "Get Job"
+    }
+  },
+  "/v1/jobs/{job_id}/pages/{number}.png": {
+    "get": {
+      "description": "One selected page of a job as a PNG, rendered while the job runs.\n\nIt is held as long as the job's result, and gone with it.",
+      "operationId": "get_page_image_v1_jobs__job_id__pages__number__png_get",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "job_id",
+          "required": true,
+          "schema": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "number",
+          "required": true,
+          "schema": {
+            "title": "Number",
+            "type": "integer"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "content": {
+            "image/png": {}
+          },
+          "description": "The page as a PNG."
+        },
+        "404": {
+          "description": "No job with this id, it has expired, or it has no image of this page."
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          },
+          "description": "Validation Error"
+        }
+      },
+      "summary": "Get Page Image"
+    }
+  }
+}
