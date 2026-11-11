@@ -19,7 +19,10 @@ no more, and its later pages have no image (404 `page_not_found`).
 
 `GET /` is a page for using the service from a browser (files in `llm_pdf_ocr/web/`,
 served with `Content-Security-Policy: default-src 'self'`, so it loads nothing from
-another origin). `OCR_WEB_PAGE=false` turns the page off for an API-only deployment:
+another origin). The page states this service's real upload limits and how long a
+finished job is kept, filled in from the settings when it is served. A small sample PDF
+for its "Try a sample" button is served at `/static/samples/sample.pdf`.
+`OCR_WEB_PAGE=false` turns the page off for an API-only deployment:
 `/` and its files then answer 404. `GET /v1/capabilities` tells the page which methods
 and vision model names it may offer; never the backend's URL or key.
 """
@@ -35,7 +38,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -204,12 +207,30 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _duration(seconds: float) -> str:
+    """Seconds as words, such as `1 hour`, `90 minutes` or `45 seconds`."""
+    for size, unit in ((3600, "hour"), (60, "minute"), (1, "second")):
+        if seconds >= size and seconds % size == 0:
+            count = int(seconds // size)
+            return f"{count} {unit}" + ("" if count == 1 else "s")
+    return f"{seconds:g} seconds"
+
+
 @app.get("/", include_in_schema=False)
-def page(request: Request) -> FileResponse:
+def page(request: Request) -> HTMLResponse:
     """The web page: pick a PDF, choose output and method, read the result."""
-    if not request.app.state.web_page:
+    state = request.app.state
+    if not state.web_page:
         raise StarletteHTTPException(status_code=404)
-    return FileResponse(WEB / "index.html", headers={"Content-Security-Policy": PAGE_CSP})
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    for name, value in {
+        "max_file_mb": f"{state.limits.max_file_bytes / (1024 * 1024):g}",
+        "max_pages": str(state.limits.max_pages),
+        "job_ttl": _duration(state.jobs.ttl),
+        "version": __version__,
+    }.items():
+        html = html.replace("{{" + name + "}}", value)
+    return HTMLResponse(html, headers={"Content-Security-Policy": PAGE_CSP})
 
 
 @app.get("/v1/capabilities")

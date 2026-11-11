@@ -1,4 +1,4 @@
-"""The README "Try it" steps are the ones the CI `try-it` job runs, on a file that exists."""
+"""The README "Quick start" steps are the ones the CI `try-it` job runs, on a file that exists."""
 
 import re
 from pathlib import Path
@@ -11,8 +11,8 @@ CHECKOUT_STANDS_IN = ("git clone ", "cd ")
 
 
 def try_it_section() -> str:
-    match = re.search(r"^## Try it\n(.*?)(?=^## )", README, re.M | re.S)
-    assert match, "README has no 'Try it' section"
+    match = re.search(r"^## Quick start\n(.*?)(?=^## )", README, re.M | re.S)
+    assert match, "README has no 'Quick start' section"
     return match[1]
 
 

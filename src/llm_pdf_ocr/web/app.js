@@ -1,15 +1,17 @@
-// The page for llm-pdf-ocr-api. No build step and no other origin: it talks to this
+// The page for LLM PDF OCR (llm-pdf-ocr-api). No build step and no other origin: it talks to this
 // service only. Text from the PDF is set with textContent, never as HTML.
 "use strict";
 
 const POLL_MS = 1000;
+const SAMPLE = "/static/samples/sample.pdf";
 
 const $ = (id) => document.getElementById(id);
 const form = $("extract");
 const drop = $("drop");
 const fileInput = $("file");
 const dropText = $("drop-text");
-const empty = $("empty");
+const emptyState = $("empty-state");
+const sample = $("sample");
 const method = $("method");
 const modelField = $("model-field");
 const model = $("model");
@@ -25,10 +27,22 @@ function showStatus(text, isError = false) {
   statusLine.classList.toggle("error", isError);
 }
 
+// Work in progress: the words, then three bouncing dots, as llm-pdf-chatbot shows
+// "Thinking". A screen reader hears the words and an ellipsis.
+function showBusy(text) {
+  const busy = el("span", "thinking");
+  const dots = el("span", "thinking-dots");
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(el("span", "thinking-dot"), el("span", "thinking-dot"), el("span", "thinking-dot"));
+  busy.append(el("span", "thinking-label", text), el("span", "visually-hidden", "…"), dots);
+  statusLine.classList.remove("error");
+  statusLine.replaceChildren(busy);
+}
+
 function showFile() {
   const file = fileInput.files[0];
   dropText.textContent = file ? file.name : "Drop a PDF here, or click to pick one";
-  empty.hidden = Boolean(file);
+  emptyState.hidden = Boolean(file);
 }
 
 // The API's error message, with its request id so a user can quote it to the operator.
@@ -63,6 +77,7 @@ async function loadCapabilities() {
   const vision = method.querySelector('option[value="vision"]');
   vision.disabled = false;
   vision.hidden = false;
+  $("vision-help").hidden = false;
   for (const name of caps.models) {
     const option = document.createElement("option");
     option.value = name;
@@ -84,10 +99,16 @@ async function follow(id) {
     const job = await response.json();
     if (job.status === "done") return job;
     if (job.status === "failed") throw new Error((job.error && job.error.message) || "the job failed");
-    showStatus(`Reading pages: ${job.pages_done} of ${job.pages_total || "?"}`);
+    showBusy(readingLine(job.pages_done, job.pages_total));
     showProgress(job.pages_done, job.pages_total);
     await sleep(POLL_MS);
   }
+}
+
+// "Reading page 2 of 3" while page 2 is read; just "Reading" until the job knows its pages.
+function readingLine(done, total) {
+  if (!total) return "Reading";
+  return `Reading page ${Math.min(done + 1, total)} of ${total}`;
 }
 
 function showProgress(done, total) {
@@ -218,8 +239,9 @@ async function extract(event) {
   if (method.value === "vision" && model.value) data.append("model", model.value);
 
   submit.disabled = true;
+  sample.disabled = true;
   clearResult();
-  showStatus("Uploading…");
+  showBusy("Uploading");
   try {
     const response = await request("/v1/jobs", { method: "POST", body: data });
     if (!response.ok) throw new Error(await errorMessage(response));
@@ -236,6 +258,7 @@ async function extract(event) {
   } finally {
     progress.hidden = true;
     submit.disabled = false;
+    sample.disabled = false;
   }
 }
 
@@ -256,6 +279,28 @@ drop.addEventListener("drop", (event) => {
   }
 });
 fileInput.addEventListener("change", showFile);
+
+// Load the bundled sample PDF into the file field and read it, so a first visitor sees a
+// result without a file of their own.
+async function trySample() {
+  sample.disabled = true;
+  try {
+    const response = await request(SAMPLE);
+    if (!response.ok) throw new Error(`Could not load the sample (${response.status}).`);
+    const file = new File([await response.blob()], "sample.pdf", { type: "application/pdf" });
+    const files = new DataTransfer();
+    files.items.add(file);
+    fileInput.files = files.files;
+    showFile();
+    sample.disabled = false; // extract() disables it again while the job runs
+    form.requestSubmit(submit);
+  } catch (err) {
+    sample.disabled = false;
+    showStatus(err.message, true);
+  }
+}
+
+sample.addEventListener("click", trySample);
 method.addEventListener("change", syncModelField);
 form.addEventListener("submit", extract);
 

@@ -159,7 +159,8 @@ def test_progress_comes_from_the_jobs_api(live_server, page):
     page.route(re.compile(r"/v1/jobs/[\w-]+$"), running_once)
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO, PAGE_ONE))
 
-    expect(page.locator("#status")).to_have_text("Reading pages: 1 of 3")
+    expect(page.locator("#status")).to_have_text("Reading page 2 of 3…")
+    expect(page.locator("#status .thinking-dot")).to_have_count(3)
     expect(page.locator("#progress")).to_be_visible()
     assert page.locator("#progress").evaluate("(p) => [p.value, p.max]") == [1, 3]
     _done(page)
@@ -188,7 +189,7 @@ def test_progress_is_indeterminate_until_the_job_knows_its_pages(live_server, pa
     _first_poll(page, {"status": "running", "pages_total": None, "pages_done": 0, "result": None})
     page.click("#submit")
 
-    expect(page.locator("#status")).to_have_text("Reading pages: 0 of ?")
+    expect(page.locator("#status")).to_have_text("Reading…")
     expect(page.locator("#progress")).to_be_visible()
     assert page.locator("#progress").get_attribute("value") is None
     _done(page)
@@ -344,7 +345,7 @@ def test_both_themes_apply(live_server, page, scheme):
     page.emulate_media(color_scheme=scheme)
     page.goto(live_server + "/")
     background = page.evaluate("getComputedStyle(document.body).backgroundColor")
-    assert background == {"light": "rgb(247, 247, 245)", "dark": "rgb(22, 22, 24)"}[scheme]
+    assert background == {"light": "rgb(244, 245, 247)", "dark": "rgb(15, 17, 21)"}[scheme]
 
 
 def test_no_horizontal_scroll_at_phone_width(live_server, page):
@@ -359,7 +360,17 @@ def test_no_horizontal_scroll_at_phone_width(live_server, page):
 
 
 _WIDTHS = "[document.documentElement.scrollWidth, document.documentElement.clientWidth]"
-CONTROLS = {"file", "format", "method", "submit", "copy", "download-md", "download-json"}
+CONTROLS = {
+    "theme-toggle",
+    "file",
+    "sample",
+    "format",
+    "method",
+    "submit",
+    "copy",
+    "download-md",
+    "download-json",
+}
 
 
 def test_no_horizontal_scroll_at_the_narrowest_phone_width(live_server, page):
@@ -487,6 +498,9 @@ def test_the_whole_flow_works_with_the_keyboard_alone(live_server, page):
         assert info.value.suggested_filename == name
 
 
+_DARK = "matchMedia('(prefers-color-scheme: dark)').matches"
+
+
 def test_every_control_has_an_accessible_name(live_server, page):
     page.route(
         "**/v1/capabilities",
@@ -506,7 +520,9 @@ def test_every_control_has_an_accessible_name(live_server, page):
     ids = [controls.nth(n).get_attribute("id") for n in range(controls.count())]
     assert set(ids) == CONTROLS | {"model"}
     names = {
+        "theme-toggle": "Light theme" if page.evaluate(_DARK) else "Dark theme",
         "file": "PDF file",
+        "sample": "Try a sample",
         "format": "Output",
         "method": "Method",
         "model": "Model",
@@ -594,3 +610,97 @@ def test_the_pages_own_text_meets_wcag_aa_contrast_in_both_themes(live_server, p
     assert {"status", "drop-hint", "empty", "submit", "failure", "method", "text"} <= whats
     low = [s for s in seen if s["ratio"] < 4.5]
     assert low == [], low
+
+
+@pytest.fixture
+def fresh_jobs():
+    """An empty job store, so these tests do not depend on how many jobs earlier ones left."""
+    saved = app.state.jobs
+    app.state.jobs = JobStore(max_jobs=3, ttl=60)
+    yield
+    app.state.jobs.shutdown()
+    app.state.jobs = saved
+
+
+def _background(page) -> str:
+    return page.evaluate("getComputedStyle(document.body).backgroundColor")
+
+
+LIGHT_BG, DARK_BG = "rgb(244, 245, 247)", "rgb(15, 17, 21)"
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_the_theme_toggle_names_its_action_switches_and_remembers(live_server, page, scheme):
+    page.emulate_media(color_scheme=scheme)
+    page.goto(live_server + "/")
+    toggle = page.locator("#theme-toggle")
+    other = "dark" if scheme == "light" else "light"
+    expect(toggle).to_have_text(f"{other.capitalize()} theme")  # names what a click does
+
+    toggle.click()
+
+    expect(toggle).to_have_text(f"{scheme.capitalize()} theme")
+    assert _background(page) == {"light": LIGHT_BG, "dark": DARK_BG}[other]
+    assert page.evaluate("localStorage.getItem('theme')") == other
+    page.reload()  # the saved choice wins over the system scheme
+    assert _background(page) == {"light": LIGHT_BG, "dark": DARK_BG}[other]
+    expect(page.locator("#theme-toggle")).to_have_text(f"{scheme.capitalize()} theme")
+
+
+def test_the_header_names_the_app_with_its_mark(live_server, page):
+    page.goto(live_server + "/")
+
+    assert page.title() == "LLM PDF OCR"
+    title = page.locator("h1.app-title")
+    expect(title).to_have_text("LLM PDF OCR")
+    expect(title.locator("svg.logo-mark")).to_be_visible()
+    fill = title.locator(".logo-mark-page").evaluate("(p) => getComputedStyle(p).fill")
+    assert fill == "rgb(109, 40, 217)"  # the violet accent, #6D28D9
+
+
+def test_try_a_sample_reads_the_bundled_pdf_without_a_file(live_server, page, fresh_jobs):
+    page.goto(live_server + "/")
+    page.click("#sample")
+    _done(page)
+
+    expect(page.locator("#drop-text")).to_have_text("sample.pdf")
+    cards = page.locator(".page-result")
+    expect(cards).to_have_count(4)
+    expect(cards.nth(0).locator(".method")).to_contain_text("text_layer")
+    expect(cards.nth(1).locator(".method")).to_contain_text("tesseract")
+
+
+def test_the_empty_state_explains_each_method_and_the_vision_line_needs_a_model(live_server, page):
+    page.goto(live_server + "/")
+    methods = page.locator(".methods dt:visible")
+    expect(methods).to_have_text(["Auto", "Text layer", "Tesseract"])
+    page.route(
+        "**/v1/capabilities",
+        lambda route: route.fulfill(
+            json={"methods": ["auto", "text_layer", "tesseract", "vision"], "models": ["m"]}
+        ),
+    )
+    page.reload()
+    expect(methods).to_have_text(["Auto", "Text layer", "Tesseract", "Vision model"])
+
+
+def test_a_failure_is_a_banner(live_server, page, fresh_jobs):
+    _extract(page, live_server, b"this is not a pdf")
+
+    status = page.locator("#status")
+    expect(status).to_have_class(re.compile("error"))
+    border = status.evaluate("(s) => getComputedStyle(s).borderLeftWidth")
+    assert border == "4px"
+    assert status.evaluate("(s) => getComputedStyle(s).backgroundColor") != "rgba(0, 0, 0, 0)"
+
+
+def test_at_desktop_width_each_page_image_sits_beside_its_text(live_server, page, fresh_jobs):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+
+    card = page.locator(".page-result")
+    image = card.locator(".page-figure").bounding_box()
+    body = card.locator(".page-body").bounding_box()
+    assert body["x"] >= image["x"] + image["width"]
+    assert abs(body["y"] - image["y"]) < 2

@@ -1,36 +1,43 @@
 # llm-pdf-ocr-api
 
-[![Star on GitHub](https://img.shields.io/github/stars/samestrin/llm-pdf-ocr-api?style=social)](https://github.com/samestrin/llm-pdf-ocr-api/stargazers)[![Fork on GitHub](https://img.shields.io/github/forks/samestrin/llm-pdf-ocr-api?style=social) ](https://github.com/samestrin/llm-pdf-ocr-api/network/members)[![Watch on GitHub](https://img.shields.io/github/watchers/samestrin/llm-pdf-ocr-api?style=social)](https://github.com/samestrin/llm-pdf-ocr-api/watchers)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo-light.svg" alt="LLM PDF OCR logo" width="180">
+  </picture>
+</p>
 
-![Version 1.0.0](https://img.shields.io/badge/Version-1.0.0-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ](https://opensource.org/licenses/MIT)[![Built with Python](https://img.shields.io/badge/Built%20with-Python-green)](https://www.python.org/)
+A small self-hosted FastAPI service, for anyone who needs the text out of PDFs, that reads a PDF page by page, scanned or not, and returns Markdown or JSON that says how each page was read.
 
-**llm-pdf-ocr-api** is a small FastAPI service that reads a PDF page by page and returns Markdown or JSON. Each page is read the cheapest way that works and the response says which way it was:
+<p>
+  <a href="https://github.com/samestrin/llm-pdf-ocr-api/actions/workflows/ci.yml"><img src="https://github.com/samestrin/llm-pdf-ocr-api/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/samestrin/llm-pdf-ocr-api/releases/latest"><img src="https://img.shields.io/github/v/release/samestrin/llm-pdf-ocr-api" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+</p>
 
-- `text_layer`: the PDF's own text, when it has a usable one.
-- `tesseract`: OCR with Tesseract, for scanned pages, with a 0 to 1 confidence.
-- `vision`: a vision model you point it at (local or in the cloud), if you configure one.
+## Demo
 
-A page that cannot be read is reported as `failed` with a reason; it is never returned as an empty page. Long PDFs can run as jobs with per-page progress.
+![The web page in the light theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-light-desktop.png)
 
-## Try it
+![The web page in the dark theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-dark-desktop.png)
 
-On a fresh clone, with only Docker installed:
+![The web page before a file is chosen: the form with its limits and a Try a sample button, and a results panel that explains each method](docs/screenshot-web-page-empty-light-desktop.png)
 
-```bash
-git clone https://github.com/samestrin/llm-pdf-ocr-api
-cd llm-pdf-ocr-api
-docker compose up --build
-```
+| Light, phone | Dark, phone |
+| --- | --- |
+| ![The web page in the light theme at phone width, with the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-light-phone.png) | ![The web page in the dark theme at phone width, with the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-dark-phone.png) |
 
-Open <http://localhost:5000> and drop in `tests/fixtures/born_digital.pdf`, a two-page PDF with a text layer. The pages show their text and say they were read by `text_layer`.
+The screenshots are made by `uv run python docs/make_screenshots.py`, with a stubbed jobs API, so they are the same on every machine.
 
-Or send the same file with `curl` from a second terminal:
+## Why
 
-```bash
-curl -F file=@tests/fixtures/born_digital.pdf localhost:5000/v1/extract
-```
+- Running every page through OCR is slow and loses good text. Each page is read the cheapest way that works: `text_layer`, the PDF's own text, when it has a usable one; `tesseract`, OCR with Tesseract, for scanned pages, with a 0 to 1 confidence; or `vision`, a vision model you point it at (local or in the cloud), if you configure one.
+- You need to know how far to trust each page. The response says which way each page was read.
+- A blank page in the output hides a failure. A page that cannot be read is reported as `failed` with a reason; it is never returned as an empty page.
+- Long PDFs time out a single request. They can run as jobs with per-page progress.
+- Not every user has `curl` at hand. A web page at `/` reads a PDF from the browser, shows each page's image beside its text, and has a sample to try.
 
-## Quick start
+## Install
 
 Run the published image (no GPU and no model download; Tesseract is inside):
 
@@ -45,18 +52,72 @@ docker build -t llm-pdf-ocr-api .
 docker run -d --name api -p 5000:5000 llm-pdf-ocr-api
 ```
 
-Then open <http://localhost:5000/> to drop in a PDF from the browser, or send it one:
-
-```bash
-curl -F file=@document.pdf localhost:5000/v1/extract
-```
-
 `docker compose up` runs the same image, and `docker compose --profile vision up -d` adds a local Ollama server for the vision backend. To run without Docker, install [uv](https://docs.astral.sh/uv/) and Tesseract, then:
 
 ```bash
 uv sync
 uv run uvicorn llm_pdf_ocr.app:app --port 5000
 ```
+
+## Quick start
+
+On a fresh clone, with only Docker installed:
+
+```bash
+git clone https://github.com/samestrin/llm-pdf-ocr-api
+cd llm-pdf-ocr-api
+docker compose up --build
+```
+
+Open <http://localhost:5000> and press **Try a sample**, or drop in `tests/fixtures/born_digital.pdf`, a two-page PDF with a text layer. The pages show their text and say they were read by `text_layer`.
+
+Or send the same file with `curl` from a second terminal:
+
+```bash
+curl -F file=@tests/fixtures/born_digital.pdf localhost:5000/v1/extract
+```
+
+```text
+## Page 1
+
+Method: text_layer
+
+Quarterly Report
+
+Left column first paragraph. Revenue grew in
+every region this quarter, led by strong
+demand for the new product line.
+...
+```
+
+## Usage
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/extract` | Read a PDF page by page and return Markdown or JSON. Fields: `file`, `format`, `pages`, `method`, `model`. |
+| `POST /v1/jobs`, then `GET /v1/jobs/{id}` | The same request as a job, for a long PDF: progress per page, then the result. |
+| `GET /v1/jobs/{id}/pages/{n}.png` | A page the job read, as a PNG. |
+| `GET /v1/capabilities` | The methods a request may use and the vision models it may pick. |
+| `GET /` | The web page. |
+| `GET /health` | Returns `{"status": "ok"}`. |
+| `POST /ocr` | Deprecated alias kept for 0.0.1. Use `/v1/extract`. |
+
+Interactive OpenAPI docs are served at `/docs` (schema at `/openapi.json`).
+
+Read two pages as JSON:
+
+```bash
+curl -F file=@document.pdf -F format=json -F pages=1-2 localhost:5000/v1/extract
+```
+
+Run a long PDF as a job, then follow it:
+
+```bash
+curl -F file=@long.pdf -F format=json localhost:5000/v1/jobs
+curl localhost:5000/v1/jobs/<id>
+```
+
+Every field, the job lifecycle and the error codes are in [docs/api.md](docs/api.md). The web page, its theme button, the sample and its screenshots are in [docs/web-page.md](docs/web-page.md).
 
 ## Configuration
 
@@ -71,21 +132,19 @@ Everything is an environment variable; none is required.
 | `OCR_LLM_TIMEOUT_SECONDS` | 60 | Per-request timeout to the vision endpoint. |
 | `OCR_LLM_CONCURRENCY` | 2 | Vision requests in flight at once. |
 | `OCR_LLM_FALLBACK_TO_TESSERACT` | false (true in `docker-compose.yml`) | Read a page with Tesseract when the vision model fails it. |
-| `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. |
-| `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. |
+| `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. The web page states it. |
+| `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. The web page states it. |
 | `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
-| `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. |
+| `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. The web page states it. |
 | `OCR_MAX_JOBS` | 20 | Jobs held at once. |
 | `OCR_MAX_IMAGE_MB` | 200 | Memory all held jobs may use for page images, together. Past it, a job still reads every page but renders no more images. |
 | `OCR_WEB_PAGE` | true | Serve the web page at `/`. Set `false` for an API-only deployment: `/` and its files answer 404. |
 
 Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
 
-The owner's private review deploy (behind a login, no host port, no model server) is in [Private review deploy on embassy](docs/deploy/embassy.md).
+## Performance
 
-## Benchmark
-
-Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, committed in [`benchmarks/results/2026-11-03.md`](benchmarks/results/2026-11-03.md), which also has the per-document rows:
+Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, in the run of 2026-11-03 with Tesseract 5.5.0, committed in [`benchmarks/results/2026-11-03.md`](benchmarks/results/2026-11-03.md) (raw results in [`2026-11-03.json`](benchmarks/results/2026-11-03.json)), which also has the per-document rows. The results file does not record the machine.
 
 | Method | Text score (1 − CER) | Table F1 | Seconds per page | Failed pages |
 |---|---:|---:|---:|---:|
@@ -108,111 +167,50 @@ uv run python benchmarks/run.py
 
 The row will name the endpoint (local Ollama) and the model (`qwen2.5vl:7b`). The result file records the model name only, never the endpoint URL or a key.
 
-## Coming from 0.0.1
+## How it works
 
-0.0.1 was a Flask service that ran TrOCR on CUDA. 1.0.0 is a different service with the same repository:
+1. The upload is checked against the limits while it arrives, and the selected pages are opened with PyMuPDF.
+2. With `method=auto`, each page uses its text layer when it is usable, else the vision model if the operator configured one, else Tesseract.
+3. Each page's result names its method (and its model or confidence); a page that fails carries an error code and message, and the other pages are still returned.
+4. A job does the same in a background thread of the one process, and also renders each page as a PNG for the web page.
 
-- Use `POST /v1/extract` instead of `/ocr`. It returns Markdown or JSON, says how each page was read and lists failed pages.
-- `/ocr` still works but is deprecated. It returns `{"text": ..., "failed_pages": [...]}`, and its `model`, `threshold_value`, `kernel_width`, `kernel_height` and `min_area` fields are now ignored.
-- No model is downloaded and no GPU is needed. TrOCR, PyTorch and Transformers are gone; scanned pages are read with Tesseract, or with a vision model if you configure one.
-- The server is uvicorn on port 5000 (it was gunicorn), and runs as a non-root user. Run one worker only, because jobs are held in memory.
-- Install with `uv sync`; `src/requirements.txt` is gone.
+## Limits
 
-## Endpoints
+- Jobs are held in the service's memory and run one at a time. Run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+- Uploads are limited to 50 MB and 500 pages by default (`OCR_MAX_FILE_MB`, `OCR_MAX_PAGES`); a page gets 120 seconds (`OCR_PAGE_TIMEOUT_SECONDS`).
+- A finished job's result and page images are kept for 3600 seconds by default (`OCR_JOB_TTL_SECONDS`), then deleted; at most 20 jobs are held at once (`OCR_MAX_JOBS`).
+- Neither `text_layer` nor `tesseract` recovers Markdown tables (Table F1 0 in the benchmark), and the vision row is not measured yet.
+- There is no auth. Put an auth proxy in front before you expose it to a network you do not trust.
+- The web page's copy button needs `localhost` or HTTPS, as the browser allows the clipboard only there.
 
-Interactive OpenAPI docs are served at `/docs` (schema at `/openapi.json`).
+## Documentation
 
-### Extract
+- [docs/api.md](docs/api.md): every endpoint and field, jobs and page images, and the error codes
+- [docs/web-page.md](docs/web-page.md): the web page, its theme, the sample, contrast and screenshots
+- [docs/vision-backend.md](docs/vision-backend.md): the vision backend with vLLM, Ollama or a cloud endpoint
+- [docs/upgrading-from-0.0.1.md](docs/upgrading-from-0.0.1.md): coming from the 0.0.1 Flask and TrOCR service
+- [docs/deploy/embassy.md](docs/deploy/embassy.md): the owner's private review deploy (behind a login, no host port, no model server)
+- [docs/release-notes-1.0.0.md](docs/release-notes-1.0.0.md): release notes for 1.0.0
+- [benchmarks/README.md](benchmarks/README.md): the benchmark set and how each column is measured
+- [VISION.md](VISION.md): what this project is and what it will become
 
-**Endpoint:** `/v1/extract` **Method:** POST
-
-Read a PDF page by page and return Markdown or JSON. Each page says how it was read: `text_layer` (the PDF's own text), `tesseract` (OCR, with a 0 to 1 confidence) or `vision` (a vision model, named in `model`).
-
-- `file`: PDF file
-- `format` (optional): `markdown` (default) or `json`.
-- `pages` (optional): 1-based pages to read, such as `1-3,5`. Defaults to every page.
-- `method` (optional): `auto` (default) uses the text layer when it is usable, else the vision model if the operator configured one, else Tesseract. `text_layer`, `tesseract` or `vision` reads every page that way.
-- `model` (optional): the vision model to use, from the operator's `OCR_LLM_ALLOWED_MODELS`. Defaults to `OCR_LLM_DEFAULT_MODEL`. Any other model is refused with 400 `model_not_allowed`, and `method=vision` with no vision model configured is refused with 400 `vision_not_configured`.
-
-```bash
-curl -F file=@document.pdf -F format=json -F pages=1-2 localhost:5000/v1/extract
-```
-
-A page that could not be read is returned as `failed`, with an error code and message, and is listed in `failed_pages`; the other pages are still returned.
-
-To read scanned pages with a vision model, local or in the cloud, see [Vision model backend](docs/vision-backend.md). With none configured, scanned pages are read with Tesseract.
-
-If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default; `docker-compose.yml` turns it on unless you set it), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
-
-### Jobs
-
-**Endpoint:** `/v1/jobs` **Method:** POST, then `/v1/jobs/{id}` **Method:** GET
-
-For a long PDF that takes minutes to read. `POST /v1/jobs` takes the same fields as `/v1/extract` and checks them the same way, then answers at once with 202, `{"id": ..., "status": "queued"}` and a `Location` header. `GET /v1/jobs/{id}` returns the job's `status` (`queued`, `running`, `done` or `failed`), `pages_total`, `pages_done`, each selected page as `pending`, `ok` or `failed`, and, once `done`, the `result`: the Markdown text, or the JSON document `/v1/extract` would return.
+## Development
 
 ```bash
-curl -F file=@long.pdf -F format=json localhost:5000/v1/jobs
-curl localhost:5000/v1/jobs/<id>
-curl -o page1.png localhost:5000/v1/jobs/<id>/pages/1.png
+uv sync
+uv run playwright install chromium   # for the browser tests and the screenshots
+uv run pytest                        # tests, with an 80% coverage gate
+uv run ruff check . && uv run ruff format --check .
+uv run python docs/make_screenshots.py
+uv run python tests/fixtures/make_fixtures.py
 ```
 
-While a job runs it renders each page it reads as a PNG (100 DPI, longer side at most 1600 px), served at `GET /v1/jobs/{id}/pages/{n}.png`. A page the job does not read, or has not rendered yet, answers 404 `page_not_found`. So does a page past `OCR_MAX_IMAGE_MB` (default 200): the images of every held job count against it together, a job that reaches it renders no more images (it still reads every page, and the web page shows "Image not available" beside that page's text), and a job's images count until it expires.
+The tests that read scanned pages need Tesseract installed. Contributions are welcome: fork the repository and open a pull request.
 
-Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result and page images `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+## Changelog
 
-### Web page
-
-**Endpoint:** `/` **Method:** GET
-
-| Light | Dark |
-| --- | --- |
-| ![The web page in the light theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-light-desktop.png) | ![The web page in the dark theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-dark-desktop.png) |
-| ![The web page in the light theme at phone width, with the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-light-phone.png) | ![The web page in the dark theme at phone width, with the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-dark-phone.png) |
-
-The screenshots are made by `uv run python docs/make_screenshots.py`.
-
-A page to use the service from a browser: drop or pick a PDF, choose Markdown or JSON and a method, and follow the job's progress. The result shows each page's image beside its text, the method that read it, and why it failed if it did; the full Markdown or JSON follows. The Markdown can be copied to the clipboard (which the browser allows on `localhost` or HTTPS), and the result downloaded as `result.md` or `result.json`. The page follows the browser's light or dark theme and fits a phone-width screen. Page text is shown as text, never as HTML, and a job that has expired is reported as an error. It is plain HTML, CSS and JavaScript shipped inside the package (no build step), served with `Content-Security-Policy: default-src 'self'`, and loads nothing from any other origin, so it works with no network. For an API-only deployment, set `OCR_WEB_PAGE=false`: `/` and the page's files then answer 404, and every API endpoint works as before.
-
-### Capabilities
-
-**Endpoint:** `/v1/capabilities` **Method:** GET
-
-Returns the methods a request may use and the vision models it may pick, for example `{"methods": ["auto", "text_layer", "tesseract"], "models": []}`. `vision` and the `OCR_LLM_ALLOWED_MODELS` names appear only when a vision model is configured. The endpoint URL and key are never returned.
-
-### OCR (deprecated)
-
-**Endpoint:** `/ocr` **Method:** POST
-
-Kept for users of 0.0.1. Returns `{"text": ..., "failed_pages": [...]}`: the text of every page that was read, and the pages that failed. The 0.0.1 `model`, `threshold_value`, `kernel_width`, `kernel_height` and `min_area` fields are ignored, and no model is downloaded. Pages are routed as `method=auto` on `/v1/extract`. Use `/v1/extract` instead.
-
-- `file`: PDF file
-
-### Health
-
-**Endpoint:** `/health` **Method:** GET
-
-Returns `{"status": "ok"}`.
-
-## Error Handling
-
-A request that cannot be served returns `{"error": {"code": ..., "message": ..., "request_id": ...}}`, with no stack trace. `request_id` is also the `X-Request-ID` response header of every response and appears in the service log line for the request, which never holds the file or any page text:
-
-- **400 Bad Request**: `invalid_pdf` (not a readable PDF, or it has no pages), `encrypted_pdf`, `invalid_page_range` or `page_out_of_range`.
-- **404 Not Found**: `job_not_found`, for a job id that does not exist or has expired.
-- **413 Content Too Large**: `file_too_large` or `too_many_pages`.
-- **404 / 405**: `not_found` or `method_not_allowed`, for a route that does not exist or a wrong method.
-- **422 Unprocessable Entity**: `invalid_request`, a missing `file` or an unknown `format`.
-- **500 Internal Server Error**: `internal_error`, for a failure the service did not expect; the log names only its type.
-- **429 Too Many Requests**: `too_many_jobs`.
-
-## Contribute
-
-Contributions to this project are welcome. Please fork the repository and submit a pull request with your changes or improvements.
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Share
-
-[![Twitter](https://img.shields.io/badge/X-Tweet-blue)](https://twitter.com/intent/tweet?text=Check%20out%20this%20awesome%20project!&url=https://github.com/samestrin/llm-pdf-ocr-api) [![Facebook](https://img.shields.io/badge/Facebook-Share-blue)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/samestrin/llm-pdf-ocr-api) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Share-blue)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/samestrin/llm-pdf-ocr-api)
+MIT; see [LICENSE](LICENSE).
