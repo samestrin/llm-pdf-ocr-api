@@ -4,6 +4,14 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Added
+
+- Web page: a find box above the result searches the per-page text and the full Markdown or JSON output in the browser, case-insensitively. Every match is highlighted and counted, with next/previous buttons and Enter/Shift+Enter keyboard navigation.
+
+### Changed
+
+- The interactive API reference at `/docs` now uses Scalar, served by the app and working offline against `/openapi.json`. FastAPI's default documentation pages and ReDoc are replaced, and the web page and project documentation link to the new reference.
+
 ## 1.0.0 (2026-11-10)
 
 The first release since 0.0.1: the service is rebuilt around a PDF's text layer and Tesseract, with an optional vision model you configure yourself. The version is set only in `pyproject.toml`; the package's `__version__` and the OpenAPI version are read from it, and the `.version` file is gone.
