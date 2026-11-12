@@ -10,14 +10,14 @@ import json
 from html import escape as escape_html
 
 import pytest
+from api_reference_check import GET_PATHS, ReferenceCheckError, check_api_reference, main
+from api_reference_check import Response as FetchResponse
 from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.testclient import TestClient
-
-from api_reference_check import GET_PATHS, ReferenceCheckError, check_api_reference, main
-from api_reference_check import Response as FetchResponse
-from llm_pdf_ocr.app import app
 from test_browser import live_server  # noqa: F401  (a session-scoped fixture)
+
+from llm_pdf_ocr.app import app
 
 PREFIX = "/api"
 
@@ -40,13 +40,15 @@ def reference_app(
     spec_href: str = "/openapi.json",
     asset_href: str = "/static/reference.js",
     proxy_url: str | None = None,
+    health_answer: object = None,
+    capabilities_answer: object = None,
 ) -> FastAPI:
     """A stand-in for the real app: a Scalar-style page, a spec, the two GET routes.
 
     The hrefs default to absolute paths, like the real page; pass relative ones
     to model a page that keeps loading behind a prefix.
     """
-    fixture = FastAPI(docs_url=None, redoc_url=None)
+    fixture = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     spec = {
         "openapi": "3.1.0",
         "info": {"title": "fixture", "version": "0.0.0"},
@@ -85,11 +87,13 @@ def reference_app(
         return Response("/* fixture */", media_type="application/javascript")
 
     @fixture.get("/health")
-    def health() -> dict:
-        return {"status": "ok"}
+    def health() -> object:
+        return {"status": "ok"} if health_answer is None else health_answer
 
     @fixture.get("/v1/capabilities")
-    def capabilities() -> dict:
+    def capabilities() -> object:
+        if capabilities_answer is not None:
+            return capabilities_answer
         return {"methods": ["auto", "text_layer", "tesseract"], "models": []}
 
     return fixture
@@ -153,7 +157,9 @@ def test_a_reachable_spec_without_servers_still_fails_behind_a_prefix():
 
 
 @pytest.mark.parametrize(
-    "servers", [[{"url": PREFIX}], [{"url": "http://testserver" + PREFIX}]], ids=["path", "absolute"]
+    "servers",
+    [[{"url": PREFIX}], [{"url": "http://testserver" + PREFIX}]],
+    ids=["path", "absolute"],
 )
 def test_a_prefix_with_a_servers_entry_passes(servers):
     fixture = reference_app(
@@ -205,12 +211,119 @@ def test_a_missing_reference_page_fails():
         check_api_reference("http://testserver/absent", fetch_with(TestClient(reference_app())))
 
 
+def bare_app() -> FastAPI:
+    return FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+SCRIPT = '<script src="/static/reference.js"></script>'
+CONFIG = (
+    '<script id="api-reference" data-configuration="{&quot;url&quot;: '
+    '&quot;/openapi.json&quot;}"></script>'
+)
+
+
+def page_app(html: str, spec_body: str = "{}", spec_type: str = "application/json") -> FastAPI:
+    """A reference page with the given HTML, and a spec route with the given answer."""
+    fixture = bare_app()
+
+    @fixture.get("/docs")
+    def docs() -> HTMLResponse:
+        return HTMLResponse(html)
+
+    @fixture.get("/static/reference.js")
+    def asset() -> Response:
+        return Response("/* fixture */", media_type="application/javascript")
+
+    @fixture.get("/openapi.json")
+    def openapi() -> Response:
+        return Response(spec_body, media_type=spec_type)
+
+    return fixture
+
+
+def test_a_page_that_is_not_html_fails():
+    fixture = bare_app()
+
+    @fixture.get("/docs")
+    def docs() -> dict:
+        return {"not": "html"}
+
+    with pytest.raises(ReferenceCheckError, match="not HTML"):
+        check_api_reference("http://testserver", fetch_with(TestClient(fixture)))
+
+
+def test_a_page_without_a_configuration_fails():
+    fixture = bare_app()
+
+    @fixture.get("/docs")
+    def docs() -> HTMLResponse:
+        return HTMLResponse('<html><script src="/static/reference.js"></script></html>')
+
+    @fixture.get("/static/reference.js")
+    def asset() -> Response:
+        return Response("/* fixture */", media_type="application/javascript")
+
+    with pytest.raises(ReferenceCheckError, match="data-configuration"):
+        check_api_reference("http://testserver", fetch_with(TestClient(fixture)))
+
+
+def test_a_spec_that_is_not_json_fails():
+    fixture = page_app(SCRIPT + CONFIG, "<html>proxy error</html>", "text/html")
+
+    with pytest.raises(ReferenceCheckError, match=r"http://testserver/openapi.json: not JSON"):
+        check_api_reference("http://testserver", fetch_with(TestClient(fixture)))
+
+
+@pytest.mark.parametrize(
+    ("html", "spec_body", "message"),
+    [
+        ("<html></html>", "{}", "names no resources"),
+        (
+            SCRIPT + '<script id="api-reference" data-configuration="not-json"></script>',
+            "{}",
+            "data-configuration is not JSON",
+        ),
+        (
+            SCRIPT + '<script id="api-reference" data-configuration="{}"></script>',
+            "{}",
+            "names no spec url",
+        ),
+        (SCRIPT + CONFIG, "[]", "the spec is not a JSON object"),
+        (SCRIPT + CONFIG, "{broken", "body is not JSON"),
+    ],
+    ids=["no-resources", "bad-configuration", "no-spec-url", "spec-not-object", "spec-not-json"],
+)
+def test_a_malformed_page_or_spec_fails(html, spec_body, message):
+    fixture = page_app(html, spec_body)
+
+    with pytest.raises(ReferenceCheckError, match=message):
+        check_api_reference("http://testserver", fetch_with(TestClient(fixture)))
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"health_answer": {"status": "down"}}, "not this API's answer"),
+        ({"capabilities_answer": {"methods": "auto"}}, "not this API's answer"),
+        ({"servers": [{}]}, "a servers entry has no url"),
+    ],
+    ids=["health-shape", "capabilities-shape", "server-without-url"],
+)
+def test_a_bad_answer_or_server_entry_fails(kwargs, message):
+    with pytest.raises(ReferenceCheckError, match=message):
+        check_api_reference("http://testserver", fetch_with(TestClient(reference_app(**kwargs))))
+
+
 def test_the_command_line_passes_against_the_live_app(live_server):  # noqa: F811
     assert main([live_server]) == 0
 
 
 def test_the_command_line_fails_when_the_reference_is_absent(live_server):  # noqa: F811
     assert main([live_server + "/absent"]) == 1
+
+
+def test_the_command_line_fails_when_nothing_listens():
+    assert main(["http://127.0.0.1:1"]) == 1
 
 
 def test_the_command_line_needs_one_url():
