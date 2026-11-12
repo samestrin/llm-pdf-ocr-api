@@ -162,3 +162,6 @@ cython_debug/
 
 # private plans (samestrin/llm-pdf-ocr-api-planning)
 .planning/
+
+# the demo GIF's frames: docs/make_demo_gif.py writes them, only the GIF is committed
+docs/demo-frame-*.png

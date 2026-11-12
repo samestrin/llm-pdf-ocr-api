@@ -16,6 +16,7 @@ dependencies = [
 dev = [
     "httpx2>=2.16",
     "jsonschema>=4",
+    "pillow>=11",
     "playwright>=1.49",
     "pytest>=8",
     "pytest-cov>=5",
