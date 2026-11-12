@@ -90,18 +90,19 @@ def changelog_sections() -> dict[str, str]:
 
 
 def test_changelog_has_a_1_0_0_section_with_the_release_workflow_entry():
+    # The 1.0.0 release is history: its section keeps its date and entries untouched.
     sections = changelog_sections()
-    (heading,) = [h for h in sections if h.startswith(VERSION)]
-    assert re.fullmatch(rf"{re.escape(VERSION)} \(\d{{4}}-\d{{2}}-\d{{2}}\)", heading)
+    heading = "1.0.0 (2026-11-10)"
+    assert heading in sections
     assert "Release workflow (`.github/workflows/release.yml`)" in sections[heading]
 
 
-def test_changelog_unreleased_entries_and_top_version_is_pyproject_version():
+def test_changelog_unreleased_is_empty_and_top_version_is_pyproject_version():
     sections = changelog_sections()
-    unreleased = sections["Unreleased"]
-    assert "### Added" in unreleased
-    assert "find box above the result" in unreleased
-    assert "### Changed" in unreleased
-    assert "API reference at `/docs` now uses Scalar" in unreleased
+    assert sections["Unreleased"].strip() == ""
     top = [h for h in sections if h != "Unreleased"][0]
-    assert top.split()[0] == VERSION
+    assert re.fullmatch(rf"{re.escape(VERSION)} \(\d{{4}}-\d{{2}}-\d{{2}}\)", top)
+    assert "find box above the result" in sections[top]
+    assert "API reference at `/docs` now uses Scalar" in sections[top]
+    assert "README demo GIF" in sections[top]
+    assert "CI checks the API reference end to end" in sections[top]
