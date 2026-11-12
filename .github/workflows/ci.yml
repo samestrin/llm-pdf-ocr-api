@@ -112,5 +112,7 @@ jobs:
         run: |
           curl -F file=@tests/fixtures/born_digital.pdf localhost:5000/v1/extract | tee out.json
           grep -q "Quarterly Report" out.json
+      - name: The API reference's "try it" reaches the API through the compose stack
+        run: python3 tests/api_reference_check.py http://localhost:5000
       - if: failure()
         run: cat compose.log

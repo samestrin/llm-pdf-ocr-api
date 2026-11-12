@@ -7,6 +7,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 ### Added
 
 - Web page: a find box above the result searches the per-page text and the full Markdown or JSON output in the browser, case-insensitively. Every match is highlighted and counted, with next/previous buttons and Enter/Shift+Enter keyboard navigation.
+- CI checks the API reference end to end: `tests/api_reference_check.py` loads `/docs`, every resource it names and the spec, then calls `/v1/capabilities` and `/health` at each server URL the spec declares (the root when it declares none). Pytest proves the check both ways with fixture apps, and the `try-it` job runs the same file against the compose stack, so a reference moved behind a path prefix without a `servers` entry fails CI.
 
 ### Changed
 
