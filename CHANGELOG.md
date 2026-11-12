@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+## 1.0.1 (2026-11-12)
+
 ### Added
 
 - README demo GIF: a real session of the web page, recorded by `uv run python docs/make_demo_gif.py`. The app runs on an ephemeral local port with nothing stubbed: "Try a sample" reads the bundled four-page PDF with the text layer and Tesseract, the find box steps through matches, and the API reference opens on `POST /v1/extract`. Frames are 1280x800 PNGs (any other size is refused), Pillow stitches them, and the script reopens the GIF to check that it animates, at one frame size, under 30 seconds. Pillow joins the dev dependency group; the recording is not part of the test run.
