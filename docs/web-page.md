@@ -58,3 +58,19 @@ uv run python docs/make_screenshots.py
 ```
 
 It serves the real page and stubs the jobs API in the browser with a fixed two-page result, so the images are the same on every machine and need neither Tesseract nor a model. It writes the four images above and `screenshot-web-page-empty-light-desktop.png`, the page before a file is chosen.
+
+## Demo GIF
+
+The README's demo GIF is a recording of one real session, made from the repository root:
+
+```bash
+uv run python docs/make_demo_gif.py
+```
+
+It needs Tesseract (the sample's scanned pages are read by it) and chromium (`uv run playwright install chromium`). The app starts on an ephemeral `127.0.0.1` port and nothing is stubbed: the script presses **Try a sample**, waits for the job to finish, shows a page read from the text layer and a page read by Tesseract with its confidence, types in the find box and steps through three matches, then opens the API reference at `/docs` and its `POST /v1/extract` section.
+
+Each step is saved as a 1280x800 PNG (`docs/demo-frame-NN-*.png`, not committed); any other size is refused. Pillow stitches the frames into `docs/demo-web-page.gif`, which the script reopens and checks: it must animate, every frame must be 1280x800, and it must run under 30 seconds (eight frames at 2.5 s each, so 20 s).
+
+An operator who runs their own instance can record that one instead with `LIVE_URL=https://their-instance uv run python docs/make_demo_gif.py`. There is no default URL: with `LIVE_URL` unset the script only ever talks to the app it started itself.
+
+The recording is not part of `uv run pytest`. The tests check the guards (a mixed-size frame set, a still or over-long or wrong-size GIF) and the committed GIF and its alt text.

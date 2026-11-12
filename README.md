@@ -17,6 +17,10 @@ A small self-hosted FastAPI service, for anyone who needs the text out of PDFs, 
 
 ## Demo
 
+![A recorded session of the web page: Try a sample reads the bundled four-page PDF, each page's text sits beside its image with the method that read it (Text layer for the pages with a text layer, Tesseract with a confidence for the scanned ones), the find box highlights a word and steps through its matches, and the API reference at /docs opens on POST /v1/extract](docs/demo-web-page.gif)
+
+The GIF is a real session, recorded by `uv run python docs/make_demo_gif.py`: the app runs on a local port, the bundled sample is read by the text layer and by Tesseract, and nothing is stubbed.
+
 ![The web page in the light theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-light-desktop.png)
 
 ![The web page in the dark theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-dark-desktop.png)
@@ -202,6 +206,7 @@ uv run playwright install chromium   # for the browser tests and the screenshots
 uv run pytest                        # tests, with an 80% coverage gate
 uv run ruff check . && uv run ruff format --check .
 uv run python docs/make_screenshots.py
+uv run python docs/make_demo_gif.py    # the README demo GIF, a real session (needs Tesseract)
 uv run python tests/fixtures/make_fixtures.py
 ```
 
