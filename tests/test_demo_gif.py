@@ -91,7 +91,9 @@ def test_stitch_refuses_a_frame_at_another_size(tmp_path, size):
 
 
 def test_stitch_writes_a_gif_that_the_checks_accept(tmp_path):
-    frames = demo.load_frames([png(tmp_path / f"frame-{i}.png") for i in range(3)])
+    # Different pictures: Pillow merges identical frames into one longer frame.
+    paths = [png(tmp_path / f"frame-{i}.png", colour=(240 - i * 20, 245, 247)) for i in range(3)]
+    frames = demo.load_frames(paths)
     out = tmp_path / "demo.gif"
 
     demo.stitch(frames, out)
@@ -139,6 +141,17 @@ def test_verify_rejects_a_file_that_is_not_a_gif(tmp_path):
     path = png(tmp_path / "frame.png")
 
     with pytest.raises(demo.DemoError):
+        demo.verify_gif(path)
+
+
+def test_verify_rejects_a_gif_whose_frames_say_no_duration(tmp_path):
+    # Without a duration a viewer shows each frame as fast as it can: the run time of
+    # such a GIF is not knowable, so it cannot be said to be under 30 seconds.
+    path = tmp_path / "no-duration.gif"
+    frames = [Image.new("RGB", demo.FRAME_SIZE, (200 + i, 30, 60)) for i in range(3)]
+    frames[0].save(path, save_all=True, append_images=frames[1:], loop=0, disposal=2)
+
+    with pytest.raises(demo.DemoError, match="duration"):
         demo.verify_gif(path)
 
 
