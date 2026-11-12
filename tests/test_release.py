@@ -96,8 +96,12 @@ def test_changelog_has_a_1_0_0_section_with_the_release_workflow_entry():
     assert "Release workflow (`.github/workflows/release.yml`)" in sections[heading]
 
 
-def test_changelog_unreleased_is_empty_and_top_version_is_pyproject_version():
+def test_changelog_unreleased_entries_and_top_version_is_pyproject_version():
     sections = changelog_sections()
-    assert sections["Unreleased"].strip() == ""
+    unreleased = sections["Unreleased"]
+    assert "### Added" in unreleased
+    assert "find box above the result" in unreleased
+    assert "### Changed" in unreleased
+    assert "API reference at `/docs` now uses Scalar" in unreleased
     top = [h for h in sections if h != "Unreleased"][0]
     assert top.split()[0] == VERSION
