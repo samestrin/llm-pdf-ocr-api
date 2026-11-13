@@ -683,7 +683,6 @@ def test_while_the_sample_loads_no_other_file_can_be_picked_or_extracted(
     page.goto(live_server + "/")
     page.click("#sample")
     page.wait_for_function("() => document.getElementById('sample').disabled")
-    assert held
 
     expect(page.locator("#file")).to_be_disabled()
     expect(page.locator("#submit")).to_be_disabled()
@@ -699,6 +698,7 @@ def test_while_the_sample_loads_no_other_file_can_be_picked_or_extracted(
     page.evaluate("() => document.getElementById('extract').requestSubmit()")  # nor a submit
     assert page.locator("#status").inner_text() != "Pick a PDF first."
 
+    assert held
     held[0].continue_()
     _done(page)
     expect(page.locator("#drop-text")).to_have_text("sample.pdf")
