@@ -7,6 +7,7 @@ blocked, and run "try it" on `/v1/capabilities`.
 import hashlib
 import json
 import re
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -96,6 +97,15 @@ def test_the_vendored_script_is_the_pinned_release():
 
     assert len(versions) == 1
     assert hashlib.sha256(SCALAR.read_bytes()).hexdigest() == digest
+
+
+def test_scalars_mit_notice_ships_beside_the_bundle():
+    # MIT asks for the copyright and permission notice to travel with the copy.
+    notice = (resources.files("llm_pdf_ocr") / "web" / "scalar" / "LICENSE").read_text()
+
+    assert notice.startswith("MIT License\n")
+    assert "Copyright (c) 2023-present Scalar" in notice
+    assert "The above copyright notice and this permission notice shall be included" in notice
 
 
 def test_the_reference_loads_nothing_from_another_origin():
