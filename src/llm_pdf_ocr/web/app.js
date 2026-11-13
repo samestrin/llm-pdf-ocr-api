@@ -397,8 +397,19 @@ findInput.addEventListener("keydown", (event) => {
 findPrev.addEventListener("click", () => stepFind(-1));
 findNext.addEventListener("click", () => stepFind(1));
 
+// One operation at a time: while the sample loads or a job runs, the file field, Extract
+// and Try a sample are disabled, and a drop or submit is ignored.
+let busy = false;
+function setBusy(on) {
+  busy = on;
+  fileInput.disabled = on;
+  submit.disabled = on;
+  sample.disabled = on;
+}
+
 async function extract(event) {
   event.preventDefault();
+  if (busy) return;
   if (!fileInput.files[0]) {
     showStatus("Pick a PDF first.", true);
     return;
@@ -412,8 +423,7 @@ async function extract(event) {
   data.append("method", method.value);
   if (method.value === "vision" && model.value) data.append("model", model.value);
 
-  submit.disabled = true;
-  sample.disabled = true;
+  setBusy(true);
   clearResult();
   showBusy("Uploading");
   try {
@@ -432,8 +442,7 @@ async function extract(event) {
     showStatus(err.message, true);
   } finally {
     progress.hidden = true;
-    submit.disabled = false;
-    sample.disabled = false;
+    setBusy(false);
   }
 }
 
@@ -448,7 +457,7 @@ for (const name of ["dragleave", "drop"]) {
 }
 drop.addEventListener("drop", (event) => {
   event.preventDefault();
-  if (event.dataTransfer.files.length) {
+  if (!busy && event.dataTransfer.files.length) {
     fileInput.files = event.dataTransfer.files;
     showFile();
   }
@@ -458,7 +467,8 @@ fileInput.addEventListener("change", showFile);
 // Load the bundled sample PDF into the file field and read it, so a first visitor sees a
 // result without a file of their own.
 async function trySample() {
-  sample.disabled = true;
+  if (busy) return;
+  setBusy(true);
   try {
     const response = await request(SAMPLE);
     if (!response.ok) throw new Error(`Could not load the sample (${response.status}).`);
@@ -467,10 +477,10 @@ async function trySample() {
     files.items.add(file);
     fileInput.files = files.files;
     showFile();
-    sample.disabled = false; // extract() disables it again while the job runs
+    setBusy(false); // extract() sets it again while the job runs
     form.requestSubmit(submit);
   } catch (err) {
-    sample.disabled = false;
+    setBusy(false);
     showStatus(err.message, true);
   }
 }
