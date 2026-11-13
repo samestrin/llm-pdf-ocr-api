@@ -2,7 +2,9 @@
 
 `standalone.js` is the published browser bundle of `@scalar/api-reference` **1.78.0**,
 copied here so `/docs` loads nothing from another origin at run time. It is MIT licensed,
-like this service.
+like this service; Scalar's copyright and permission notice is in [`LICENSE`](LICENSE), copied
+from `https://github.com/scalar/scalar/blob/main/LICENSE` (the npm package carries none), and
+ships with the bundle.
 
 - Pinned version: `@scalar/api-reference@1.78.0`
 - Downloaded from: `https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.78.0/dist/browser/standalone.js`
@@ -13,6 +15,6 @@ configuration there turns off Scalar's request proxy, its web fonts, its telemet
 "open in client" button, so the reference works with no network at all.
 
 To move to a newer version: download the same URL with the new version number, replace
-`standalone.js`, and update the version and the SHA-256 above. Do not edit the bundle.
+`standalone.js`, and update the version and the SHA-256 above. Do not edit the bundle or `LICENSE`.
 `tests/test_api_reference.py` checks the digest, and its browser test loads the page with
 every other origin blocked and runs "try it".
