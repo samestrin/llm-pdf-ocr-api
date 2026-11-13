@@ -278,32 +278,59 @@ function clearFind() {
   findNext.disabled = true;
 }
 
-// One pass over the text: every start of the query, case-insensitive and literal (no
-// regex). Matches do not overlap.
-function matchStarts(text, query) {
-  const hay = text.toLowerCase();
-  const needle = query.toLowerCase();
-  const starts = [];
-  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
-    starts.push(i);
+// Lowercase one character at a time, so each unit of the lowercased text knows which
+// character of the original it came from: lowercasing can change the length ("İ" becomes
+// "i" and a combining dot). Final sigma is folded to sigma, as whole-word lowercasing
+// would have chosen either.
+function lowerChars(text) {
+  let lower = "";
+  const from = []; // from[k]: where the character behind lower[k] starts in text
+  const to = []; // to[k]: where it ends
+  for (let i = 0; i < text.length; ) {
+    const ch = String.fromCodePoint(text.codePointAt(i));
+    const low = ch.toLowerCase().replace("ς", "σ");
+    for (let k = 0; k < low.length; k++) {
+      from.push(i);
+      to.push(i + ch.length);
+    }
+    lower += low;
+    i += ch.length;
   }
-  return starts;
+  return { lower, from, to };
+}
+
+// One pass over the text: every [start, end) of the query in the original text,
+// case-insensitive and literal (no regex). A match that covers part of an expanded
+// character takes the whole character. Matches do not overlap.
+function matchRanges(text, query) {
+  const hay = lowerChars(text);
+  const needle = lowerChars(query).lower;
+  const ranges = [];
+  for (let i = hay.lower.indexOf(needle); i !== -1; ) {
+    const start = hay.from[i];
+    const end = hay.to[i + needle.length - 1];
+    ranges.push([start, end]);
+    let next = i + needle.length;
+    while (next < hay.from.length && hay.from[next] < end) next++;
+    i = hay.lower.indexOf(needle, next);
+  }
+  return ranges;
 }
 
 // Rebuild one text once: text nodes and <mark> elements, never HTML.
 function highlightText(node, query) {
   const text = node.textContent;
-  const starts = matchStarts(text, query);
-  if (!starts.length) {
+  const ranges = matchRanges(text, query);
+  if (!ranges.length) {
     if (node.querySelector("mark")) node.textContent = text;
     return;
   }
   const frag = document.createDocumentFragment();
   let pos = 0;
-  for (const start of starts) {
+  for (const [start, end] of ranges) {
     if (start > pos) frag.append(text.slice(pos, start));
-    frag.append(el("mark", "find-match", text.slice(start, start + query.length)));
-    pos = start + query.length;
+    frag.append(el("mark", "find-match", text.slice(start, end)));
+    pos = end;
   }
   if (pos < text.length) frag.append(text.slice(pos));
   node.replaceChildren(frag);
