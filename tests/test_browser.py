@@ -746,9 +746,15 @@ def test_the_vision_line_is_plain(live_server, page):
 # Markdown or JSON output, entirely in the browser.
 
 
-def _hits(text: str, query: str) -> int:
-    """Non-overlapping, case-insensitive occurrences, counted as the find box counts them."""
-    return text.lower().count(query.lower())
+# Expected counts are worked out by hand from the texts, never computed with the same
+# lowercase-and-count rule the page uses, so a case-mapping mistake cannot pass both sides.
+# Each page text says "Page" once ("paragraph" is not a match). The Markdown output adds
+# "## Page 1", "Page one", "## Page 2", "Page two"; the JSON output adds "pages", "page": 1,
+# "Page one", "page": 2, "Page two", "page_count" and "failed_pages".
+_PAGE_MARKS = {
+    "markdown": ["Page", "Page", "Page", "Page", "Page", "Page"],
+    "json": ["Page", "Page", "page", "page", "Page", "page", "Page", "page", "page"],
+}
 
 
 @pytest.mark.parametrize("fmt", ["markdown", "json"])
@@ -757,19 +763,17 @@ def test_find_highlights_every_match_in_the_page_texts_and_the_output(
 ):
     _result_doc(live_server, page, fmt=fmt)
     output = page.locator("#result").text_content()
-    expected = _hits(PAGE_ONE, "page") + _hits(PAGE_TWO, "page") + _hits(output, "page")
+    expected = {"markdown": 6, "json": 9}[fmt]
 
     page.fill("#find-input", "page")
 
     expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
     marks = page.locator("mark.find-match")
     expect(marks).to_have_count(expected)
-    assert all(t.lower() == "page" for t in marks.all_text_contents())
+    assert marks.all_text_contents() == _PAGE_MARKS[fmt]
     expect(marks.nth(0)).to_have_class(re.compile(r"\bcurrent\b"))
-    expect(page.locator(".page-result").nth(0).locator("mark")).to_have_count(
-        _hits(PAGE_ONE, "page")
-    )
-    expect(page.locator("#result mark")).to_have_count(_hits(output, "page"))
+    expect(page.locator(".page-result").nth(0).locator("mark")).to_have_count(1)
+    expect(page.locator("#result mark")).to_have_count(expected - 2)
     # Highlighting never changes the text itself.
     expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
     assert page.locator("#result").text_content() == output
@@ -895,9 +899,9 @@ def test_find_backspacing_to_an_empty_query_clears_and_the_page_stays_alive(
     expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
     assert page.locator("#result").text_content() == output
     assert page.evaluate("1 + 1") == 2
-    expected = _hits(PAGE_ONE, "hello") + _hits(PAGE_TWO, "hello") + _hits(output, "hello")
-    box.fill("hello")
-    expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
+    box.fill("hello")  # page one's text, and the same text in the Markdown output
+    expect(page.locator("#find-count")).to_have_text("1 of 2")
+    assert page.locator("mark.find-match").all_text_contents() == ["hello", "hello"]
 
 
 def test_find_with_no_match_says_so_and_cannot_step(live_server, page, fresh_jobs):
@@ -923,19 +927,94 @@ def test_find_is_literal_text_not_a_regex(live_server, page, fresh_jobs):
     page.on("pageerror", lambda error: errors.append(str(error)))
     _extract(page, live_server, _pdf(text))
     _done(page)
-    output = page.locator("#result").text_content()
 
-    for query in ("a.c", "A.C", "1.50", "[x]", "(y)"):
+    # The text appears twice: in the page card and in the Markdown output. "abc" and
+    # "1x50" would match a regex but not the literal text.
+    for query, expected in (("a.c", 4), ("A.C", 4), ("1.50", 2), ("[x]", 2), ("(y)", 2)):
         page.fill("#find-input", query)
-        expected = _hits(text, query) + _hits(output, query)
         expect(page.locator("#find-count")).to_have_text(f"1 of {expected}")
         marks = page.locator("mark.find-match")
         expect(marks).to_have_count(expected)
         # Consecutive queries can share a count ("1 of 2"), so wait for the new marks
         # themselves, not only the count, before reading them.
         expect(marks.nth(0)).to_have_text(re.compile(rf"^{re.escape(query)}$", re.IGNORECASE))
-        assert all(t.lower() == query.lower() for t in marks.all_text_contents())
+        assert marks.all_text_contents() == [query.lower()] * expected
     assert errors == []
+
+
+def _one_page_result(page, text: str) -> None:
+    """Answer the first poll with a done job of one text-layer page that says `text`."""
+    doc = Document(pages=[Page(number=1, status="ok", method=Method.TEXT_LAYER, text=text)])
+    page.route(
+        re.compile(r"/pages/\d+\.png$"),
+        lambda route: route.fulfill(status=200, content_type="image/png", body=_PNG_1PX),
+    )
+    _first_poll(
+        page,
+        {
+            "status": "done",
+            "pages_total": 1,
+            "pages_done": 1,
+            "result": json.loads(render_json(doc)),
+            "error": None,
+        },
+    )
+
+
+def test_find_highlights_the_original_text_when_lowercasing_expands_a_character(
+    live_server, page, fresh_jobs
+):
+    # "İ" (U+0130) lowercases to two code units, "i" and a combining dot, so offsets into
+    # the lowercased text run ahead of the original. The text is in the page card and in the
+    # Markdown output, so every match below is found twice.
+    text = "İİ needle and NEEDLE"
+    _one_page_result(page, text)
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+    marks = page.locator("mark.find-match")
+    card = page.locator(".page-result").nth(0).locator(".text")
+
+    page.fill("#find-input", "needle")
+    expect(page.locator("#find-count")).to_have_text("1 of 4")
+    assert marks.all_text_contents() == ["needle", "NEEDLE", "needle", "NEEDLE"]
+    expect(card).to_have_text(text)
+
+    page.fill("#find-input", "İİ")
+    expect(page.locator("#find-count")).to_have_text("1 of 2")
+    assert marks.all_text_contents() == ["İİ", "İİ"]
+    expect(card).to_have_text(text)
+
+    # "i" matches only the first half of each lowercased "İ": the mark takes the whole "İ".
+    page.fill("#find-input", "i")
+    expect(page.locator("#find-count")).to_have_text("1 of 4")
+    assert marks.all_text_contents() == ["İ", "İ", "İ", "İ"]
+    expect(card).to_have_text(text)
+
+
+def test_find_matches_final_sigma_and_never_overlaps_inside_an_expanded_character(
+    live_server, page, fresh_jobs
+):
+    # Each match is found twice: in the page card and in the Markdown output.
+    text = "ΟΔΟΣ οδος İİİ"
+    _one_page_result(page, text)
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+    marks = page.locator("mark.find-match")
+    card = page.locator(".page-result").nth(0).locator(".text")
+
+    # Lowercased alone, "Σ" is "σ", while a typed word ends in "ς": both words match.
+    page.fill("#find-input", "οδος")
+    expect(page.locator("#find-count")).to_have_text("1 of 4")
+    assert marks.all_text_contents() == ["ΟΔΟΣ", "οδος", "ΟΔΟΣ", "οδος"]
+    expect(card).to_have_text(text)
+
+    # A combining dot then "i" matches from inside the first "İ" into the second, so the
+    # mark is "İİ". The next try, from the second "İ"'s own dot, would overlap that mark;
+    # it is skipped, and the third "İ" alone cannot match.
+    page.fill("#find-input", "\u0307i")
+    expect(page.locator("#find-count")).to_have_text("1 of 2")
+    assert marks.all_text_contents() == ["İİ", "İİ"]
+    expect(card).to_have_text(text)
 
 
 def test_find_never_sends_anything_to_the_server(live_server, page, fresh_jobs):
@@ -1009,8 +1088,7 @@ def test_find_on_500_pages_is_one_pass_per_burst_under_200_ms(live_server, page,
     _extract(page, live_server, _pdf(PAGE_ONE), fmt=fmt)
     _done(page)
     expect(page.locator(".page-result")).to_have_count(500)
-    output = page.locator("#result").text_content()
-    expected = 500 + _hits(output, "needle")
+    expected = 1000  # one needle in each of the 500 page cards, and one in each page's output
 
     page.evaluate(_FIND_PASS_CLOCK)
     # A burst of keystrokes with no gap: the debounce must coalesce them into one pass.

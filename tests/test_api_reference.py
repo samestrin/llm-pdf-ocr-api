@@ -7,6 +7,7 @@ blocked, and run "try it" on `/v1/capabilities`.
 import hashlib
 import json
 import re
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -58,16 +59,12 @@ def test_the_docs_name_the_reference_and_the_raw_spec():
         assert "`/openapi.json`" in text, name
 
 
-def test_the_docs_and_the_app_name_no_old_docs_ui():
-    # Spelled in two pieces so `git grep -i <the word>` stays clean, as the task requires.
-    old_ui = "swag" + "ger"
-    for path in (
-        ROOT / "README.md",
-        ROOT / "docs" / "api.md",
-        ROOT / "docs" / "web-page.md",
-        ROOT / "src" / "llm_pdf_ocr" / "app.py",
-    ):
-        assert old_ui not in path.read_text().lower(), path
+def test_fastapis_default_docs_helper_route_is_gone():
+    # FastAPI's default docs page brings an OAuth2 redirect page with it; Scalar does not.
+    response = client.get("/docs/oauth2-redirect")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
 
 
 def test_redoc_is_gone():
@@ -100,6 +97,15 @@ def test_the_vendored_script_is_the_pinned_release():
 
     assert len(versions) == 1
     assert hashlib.sha256(SCALAR.read_bytes()).hexdigest() == digest
+
+
+def test_scalars_mit_notice_ships_beside_the_bundle():
+    # MIT asks for the copyright and permission notice to travel with the copy.
+    notice = (resources.files("llm_pdf_ocr") / "web" / "scalar" / "LICENSE").read_text()
+
+    assert notice.startswith("MIT License\n")
+    assert "Copyright (c) 2023-present Scalar" in notice
+    assert "The above copyright notice and this permission notice shall be included" in notice
 
 
 def test_the_reference_loads_nothing_from_another_origin():
