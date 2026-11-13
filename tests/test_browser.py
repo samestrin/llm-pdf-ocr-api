@@ -984,6 +984,38 @@ def test_find_highlights_the_original_text_when_lowercasing_expands_a_character(
     assert marks.all_text_contents() == ["İİ", "İİ"]
     expect(card).to_have_text(text)
 
+    # "i" matches only the first half of each lowercased "İ": the mark takes the whole "İ".
+    page.fill("#find-input", "i")
+    expect(page.locator("#find-count")).to_have_text("1 of 4")
+    assert marks.all_text_contents() == ["İ", "İ", "İ", "İ"]
+    expect(card).to_have_text(text)
+
+
+def test_find_matches_final_sigma_and_never_overlaps_inside_an_expanded_character(
+    live_server, page, fresh_jobs
+):
+    # Each match is found twice: in the page card and in the Markdown output.
+    text = "ΟΔΟΣ οδος İİİ"
+    _one_page_result(page, text)
+    _extract(page, live_server, _pdf(PAGE_ONE))
+    _done(page)
+    marks = page.locator("mark.find-match")
+    card = page.locator(".page-result").nth(0).locator(".text")
+
+    # Lowercased alone, "Σ" is "σ", while a typed word ends in "ς": both words match.
+    page.fill("#find-input", "οδος")
+    expect(page.locator("#find-count")).to_have_text("1 of 4")
+    assert marks.all_text_contents() == ["ΟΔΟΣ", "οδος", "ΟΔΟΣ", "οδος"]
+    expect(card).to_have_text(text)
+
+    # A combining dot then "i" matches from inside the first "İ" into the second, so the
+    # mark is "İİ". The next try, from the second "İ"'s own dot, would overlap that mark;
+    # it is skipped, and the third "İ" alone cannot match.
+    page.fill("#find-input", "\u0307i")
+    expect(page.locator("#find-count")).to_have_text("1 of 2")
+    assert marks.all_text_contents() == ["İİ", "İİ"]
+    expect(card).to_have_text(text)
+
 
 def test_find_never_sends_anything_to_the_server(live_server, page, fresh_jobs):
     _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO))
