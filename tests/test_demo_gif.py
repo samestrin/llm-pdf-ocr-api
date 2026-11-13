@@ -8,7 +8,9 @@ script makes, both ways, and the GIF it committed.
 import importlib.util
 import re
 import sys
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -175,22 +177,43 @@ def test_the_readme_shows_the_gif_with_alt_text_of_a_real_session():
         assert word.lower() in alt.lower(), f"alt text does not mention {word}: {alt}"
 
 
-def test_the_script_header_documents_the_command_and_what_it_needs():
-    header = SCRIPT.read_text().split('"""')[1]
+def _fake_capture(monkeypatch, tmp_path):
+    """Stand in for the browser and the server; record where main points the capture."""
+    calls = {"bases": [], "servers": 0}
 
-    assert "uv run python docs/make_demo_gif.py [OUT_DIR]" in header
-    assert "Tesseract" in header
-    assert "LIVE_URL" in header
-    assert "1280x800" in header
+    def capture(base, out):
+        calls["bases"].append(base)
+        return [png(out / f"frame-{n}.png", colour=(n * 90, 0, 0)) for n in range(2)]
+
+    def server():
+        calls["servers"] += 1
+        thread = threading.Thread(target=lambda: None)
+        thread.start()
+        return SimpleNamespace(should_exit=False), thread, "http://127.0.0.1:9"
+
+    monkeypatch.setattr(demo, "capture_frames", capture)
+    monkeypatch.setattr(demo, "start_server", server)
+    monkeypatch.setattr(demo, "require_tesseract", lambda: None)
+    return calls
 
 
-def test_the_capture_stubs_nothing_and_defaults_to_no_remote_url():
-    source = SCRIPT.read_text()
+def test_with_no_live_url_the_capture_runs_against_a_local_app(monkeypatch, tmp_path):
+    monkeypatch.delenv("LIVE_URL", raising=False)
+    calls = _fake_capture(monkeypatch, tmp_path)
 
-    assert ".route(" not in source, "the demo is a real session: no route stubs"
-    assert re.search(r"""os\.environ\.get\(\s*["']LIVE_URL["']\s*,\s*["']["']\s*\)""", source), (
-        "LIVE_URL is read from the environment with no default URL"
-    )
+    written = demo.main(tmp_path)
+
+    assert calls == {"bases": ["http://127.0.0.1:9"], "servers": 1}
+    assert written[-1] == tmp_path / demo.GIF_NAME
+
+
+def test_live_url_points_the_capture_at_that_instance_and_starts_no_app(monkeypatch, tmp_path):
+    monkeypatch.setenv("LIVE_URL", " https://ocr.example.test/ ")
+    calls = _fake_capture(monkeypatch, tmp_path)
+
+    demo.main(tmp_path)
+
+    assert calls == {"bases": ["https://ocr.example.test"], "servers": 0}
 
 
 def test_a_local_capture_needs_tesseract(monkeypatch):

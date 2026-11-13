@@ -58,16 +58,12 @@ def test_the_docs_name_the_reference_and_the_raw_spec():
         assert "`/openapi.json`" in text, name
 
 
-def test_the_docs_and_the_app_name_no_old_docs_ui():
-    # Spelled in two pieces so `git grep -i <the word>` stays clean, as the task requires.
-    old_ui = "swag" + "ger"
-    for path in (
-        ROOT / "README.md",
-        ROOT / "docs" / "api.md",
-        ROOT / "docs" / "web-page.md",
-        ROOT / "src" / "llm_pdf_ocr" / "app.py",
-    ):
-        assert old_ui not in path.read_text().lower(), path
+def test_fastapis_default_docs_helper_route_is_gone():
+    # FastAPI's default docs page brings an OAuth2 redirect page with it; Scalar does not.
+    response = client.get("/docs/oauth2-redirect")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
 
 
 def test_redoc_is_gone():
