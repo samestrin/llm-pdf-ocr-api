@@ -97,9 +97,11 @@ def test_changelog_has_a_1_0_0_section_with_the_release_workflow_entry():
     assert "Release workflow (`.github/workflows/release.yml`)" in sections[heading]
 
 
-def test_changelog_unreleased_is_empty_and_top_version_is_pyproject_version():
+def test_changelog_top_released_version_is_pyproject_version():
+    # Unreleased may hold entries for the next release; the newest dated section is the
+    # version pyproject.toml ships.
     sections = changelog_sections()
-    assert sections["Unreleased"].strip() == ""
+    assert "Unreleased" in sections
     top = [h for h in sections if h != "Unreleased"][0]
     assert re.fullmatch(rf"{re.escape(VERSION)} \(\d{{4}}-\d{{2}}-\d{{2}}\)", top)
     assert "find box above the result" in sections[top]

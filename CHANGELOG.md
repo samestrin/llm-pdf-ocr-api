@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Fixed
+
+- Web page: while "Try a sample" downloads the sample PDF, the file field, Extract and Try a sample are disabled and a dropped file is ignored, as they already were while a job runs. Before, a file picked during a slow sample download was replaced by the sample and a second job could start alongside the first.
+
 ## 1.0.1 (2026-11-12)
 
 ### Added

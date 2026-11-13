@@ -674,6 +674,39 @@ def test_try_a_sample_reads_the_bundled_pdf_without_a_file(live_server, page, fr
     expect(cards.nth(1).locator(".method")).to_contain_text("Method: Tesseract")
 
 
+def test_while_the_sample_loads_no_other_file_can_be_picked_or_extracted(
+    live_server, page, fresh_jobs
+):
+    held = []
+    # Hold the sample download, as a slow connection would.
+    page.route("**/static/samples/sample.pdf", lambda route: held.append(route))
+    page.goto(live_server + "/")
+    page.click("#sample")
+    page.wait_for_function("() => document.getElementById('sample').disabled")
+
+    expect(page.locator("#file")).to_be_disabled()
+    expect(page.locator("#submit")).to_be_disabled()
+    page.evaluate(  # a drop on the drop zone is ignored too
+        """() => {
+            const files = new DataTransfer();
+            files.items.add(new File(["x"], "other.pdf", { type: "application/pdf" }));
+            const drop = new DragEvent("drop", { dataTransfer: files, cancelable: true });
+            document.getElementById("drop").dispatchEvent(drop);
+        }"""
+    )
+    expect(page.locator("#drop-text")).not_to_have_text("other.pdf")
+    page.evaluate("() => document.getElementById('extract').requestSubmit()")  # nor a submit
+    assert page.locator("#status").inner_text() != "Pick a PDF first."
+
+    assert held
+    held[0].continue_()
+    _done(page)
+    expect(page.locator("#drop-text")).to_have_text("sample.pdf")
+    expect(page.locator(".page-result")).to_have_count(4)
+    for control in ("#file", "#submit", "#sample"):
+        expect(page.locator(control)).to_be_enabled()
+
+
 def test_the_empty_state_explains_each_method_and_the_vision_line_needs_a_model(live_server, page):
     page.goto(live_server + "/")
     methods = page.locator(".methods dt:visible")
