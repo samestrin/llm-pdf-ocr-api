@@ -13,6 +13,7 @@ import pymupdf
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from test_vision import FakeServer, completion
 
 from llm_pdf_ocr import presets as presets_module
 from llm_pdf_ocr.app import (
@@ -27,6 +28,7 @@ from llm_pdf_ocr.config import (
     VisionConfig,
     load_public_demo_config,
 )
+from llm_pdf_ocr.jobs import JobStore
 from llm_pdf_ocr.presets import (
     CredentialsError,
     Preset,
@@ -36,12 +38,13 @@ from llm_pdf_ocr.presets import (
 )
 from llm_pdf_ocr.requestlog import RequestLog
 from llm_pdf_ocr.vision import VisionError, read_image
-from test_vision import FakeServer, completion
 
 FAKE_KEY = "sk-visitor-fake-key-PLANTED-7f3a9c"
 DEMO_CODE = "sk-demo-PLANTEDDEMOCODE234567"
 GATEWAY = "http://gateway.internal:4000/v1"
 SERVER = VisionConfig(timeout=7.0, concurrency=3)
+
+DEMO_HEADERS = ({"X-Demo-Code": DEMO_CODE}, {"X-Model-Preset": "demo", "X-Demo-Code": DEMO_CODE})
 
 TABLE = {
     "openai": ("OpenAI", "https://api.openai.com/v1", "gpt-5-nano"),
@@ -55,7 +58,10 @@ TABLE = {
 }
 
 
-def _config(headers, demo=PublicDemoConfig(), server=SERVER):
+NO_DEMO = PublicDemoConfig()
+
+
+def _config(headers, demo=NO_DEMO, server=SERVER):
     return request_vision_config(headers, server, demo)
 
 
@@ -96,8 +102,9 @@ def test_the_preset_file_ships_inside_the_package():
         ),
         ([{"id": "A/b", "label": "A", "vision_model": "m", "base_url": "https://x/v1"}], "id"),
         ([{"id": "a", "label": "A", "base_url": "https://x/v1"}], "vision_model"),
+        ([{"id": "a", "label": "A", "vision_model": "m", "base_url_env": "HOME"}], "base_url_env"),
     ],
-    ids=["no-url", "not-https", "duplicate", "bad-id", "no-model"],
+    ids=["no-url", "not-https", "duplicate", "bad-id", "no-model", "other-env"],
 )
 def test_a_bad_preset_file_is_refused(tmp_path, entries, message):
     path = tmp_path / "presets.json"
@@ -139,8 +146,9 @@ def test_public_demo_config_reads_the_gateway_and_notice():
 
 @pytest.mark.parametrize("value", ["gateway.internal:4000", "ftp://gateway/v1", "http://"])
 def test_a_gateway_that_is_not_an_http_url_is_a_config_error(value):
-    with pytest.raises(ConfigError, match="DEMO_GATEWAY_URL"):
+    with pytest.raises(ConfigError, match="DEMO_GATEWAY_URL") as info:
         load_public_demo_config({"DEMO_GATEWAY_URL": value})
+    assert value not in str(info.value)  # a URL may carry a user and password
 
 
 # --- request_vision_config ------------------------------------------------------------
@@ -173,14 +181,16 @@ def test_the_preset_id_is_matched_without_case_or_spaces():
 def test_a_demo_code_reaches_the_gateway():
     demo = PublicDemoConfig(gateway_url=GATEWAY)
 
-    for headers in ({"X-Demo-Code": DEMO_CODE}, {"X-Model-Preset": "demo", "X-Demo-Code": DEMO_CODE}):
+    model = next(p for p in load_presets() if p.id == "demo").vision_model
+
+    for headers in DEMO_HEADERS:
         config = _config(headers, demo)
         assert config.base_url == GATEWAY
         assert config.api_key == DEMO_CODE
-        assert config.default_model == next(p for p in load_presets() if p.id == "demo").vision_model
+        assert config.default_model == model
 
 
-def _refused(headers, demo=PublicDemoConfig()) -> CredentialsError:
+def _refused(headers, demo=NO_DEMO) -> CredentialsError:
     with pytest.raises(CredentialsError) as info:
         _config(headers, demo)
     return info.value
@@ -212,7 +222,7 @@ def test_a_url_like_preset_value_is_refused(value):
 
 
 def test_the_demo_preset_is_refused_when_no_gateway_is_set():
-    for headers in ({"X-Demo-Code": DEMO_CODE}, {"X-Model-Preset": "demo", "X-Demo-Code": DEMO_CODE}):
+    for headers in DEMO_HEADERS:
         error = _refused(headers)
         assert (error.status_code, error.code) == (400, "preset_not_allowed")
 
@@ -455,7 +465,16 @@ def test_extract_ignores_the_credential_headers(fake_provider, caplog, demo_on):
     assert FAKE_KEY not in response.text and FAKE_KEY not in caplog.text
 
 
-def test_jobs_ignore_the_credential_headers(fake_provider, caplog, demo_on):
+@pytest.fixture
+def store():
+    saved = app.state.jobs
+    app.state.jobs = JobStore(max_jobs=3, ttl=60)
+    yield
+    app.state.jobs.shutdown()
+    app.state.jobs = saved
+
+
+def test_jobs_ignore_the_credential_headers(fake_provider, caplog, demo_on, store):
     caplog.set_level(logging.DEBUG)
     files = {"file": ("a.pdf", _pdf(), "application/pdf")}
 
@@ -463,6 +482,7 @@ def test_jobs_ignore_the_credential_headers(fake_provider, caplog, demo_on):
     created = client.post(
         "/v1/jobs", files=files, data={"method": "auto", "format": "json"}, headers=HEADERS
     )
+    assert created.status_code == 202
     job_id = created.json()["id"]
     for _ in range(200):
         job = client.get(f"/v1/jobs/{job_id}", headers=HEADERS)
@@ -490,4 +510,3 @@ def test_capabilities_never_show_a_key_or_url_with_credentials_sent(demo_on):
     assert "sk-operator" not in response.text
     assert "http" not in response.text
     assert "gateway.internal" not in response.text
-

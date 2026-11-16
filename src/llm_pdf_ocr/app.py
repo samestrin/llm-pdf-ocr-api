@@ -24,7 +24,13 @@ finished job is kept, filled in from the settings when it is served. A small sam
 for its "Try a sample" button is served at `/static/samples/sample.pdf`.
 `OCR_WEB_PAGE=false` turns the page off for an API-only deployment:
 `/`, `/docs` and their files then answer 404. `GET /v1/capabilities` tells the page which
-methods and vision model names it may offer; never the backend's URL or key.
+methods and vision model names it may offer, the model presets a visitor may pick
+(`llm_pdf_ocr.presets`), whether demo codes work here and the public notice; never a
+backend's URL or key.
+
+A visitor's own key or demo code arrives in request headers and is read only by the
+routes that take `RequestVision`; `/v1/extract` and `/v1/jobs` use the server's own
+vision config and ignore those headers.
 
 `GET /docs` is the API reference: Scalar, vendored in `llm_pdf_ocr/web/scalar/` at a
 pinned version, reading this service's own `/openapi.json`. It loads nothing from
@@ -54,9 +60,11 @@ from llm_pdf_ocr import __version__
 from llm_pdf_ocr.config import (
     Limits,
     ModelNotAllowedError,
+    PublicDemoConfig,
     VisionConfig,
     load_job_settings,
     load_limits,
+    load_public_demo_config,
     load_vision_config,
     load_web_page,
 )
@@ -77,6 +85,7 @@ from llm_pdf_ocr.extract import (
 from llm_pdf_ocr.jobs import Job, JobStatus, JobStore, TooManyJobsError
 from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
 from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError, open_pdf, render_page_image
+from llm_pdf_ocr.presets import CredentialsError, public_presets, request_vision_config
 from llm_pdf_ocr.requestlog import RequestLog, current_request_id
 
 log = logging.getLogger(__name__)
@@ -88,9 +97,17 @@ def get_vision_config() -> VisionConfig:
     return load_vision_config()
 
 
+@cache
+def get_public_demo_config() -> PublicDemoConfig:
+    """The demo-code gateway and the public notice, read from the environment once."""
+    return load_public_demo_config()
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    get_vision_config()  # a bad OCR_LLM_* value stops the service at start, not per request
+    # A bad OCR_LLM_* or DEMO_GATEWAY_URL value stops the service at start, not per request.
+    get_vision_config()
+    get_public_demo_config()
     yield
     app.state.jobs.shutdown()
 
@@ -216,6 +233,24 @@ class JobView(_Schema):
     error: JobError | None = Field(description="Why a `failed` job failed.")
 
 
+class PresetView(_Schema):
+    id: str = Field(description="What to send in `X-Model-Preset`.")
+    label: str
+    vision_model: str
+
+
+class Capabilities(_Schema):
+    """What a caller may ask for. No backend URL or key."""
+
+    methods: list[str]
+    models: list[str] = Field(description="Vision model names from the operator's list.")
+    presets: list[PresetView] = Field(
+        description="Providers a visitor may read a page with, using their own key."
+    )
+    demo_available: bool = Field(description="Whether a demo code (`X-Demo-Code`) works here.")
+    notice: str | None = Field(description="The public demo notice, from `PUBLIC_DEMO_NOTICE`.")
+
+
 def _error_response(description: str) -> dict:
     return {"description": description, "model": ErrorResponse}
 
@@ -265,7 +300,22 @@ def _vision_not_configured(request: Request, exc: VisionNotConfiguredError) -> J
     return _error(exc.code, str(exc))
 
 
+@app.exception_handler(CredentialsError)
+def _credentials_error(request: Request, exc: CredentialsError) -> JSONResponse:
+    return _error(exc.code, str(exc), status_code=exc.status_code)
+
+
 Vision = Annotated[VisionConfig, Depends(get_vision_config)]
+PublicDemo = Annotated[PublicDemoConfig, Depends(get_public_demo_config)]
+
+
+def _request_vision(request: Request, vision: Vision, demo: PublicDemo) -> VisionConfig:
+    return request_vision_config(request.headers, vision, demo)
+
+
+# The vision config for this one request: a preset and the visitor's key or demo code
+# (`X-Model-Preset`, `X-Model-Key`, `X-Demo-Code`), or the server's own without them.
+RequestVision = Annotated[VisionConfig, Depends(_request_vision)]
 
 
 @app.exception_handler(FileTooLargeError)
@@ -347,17 +397,25 @@ def api_reference(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/v1/capabilities")
-def capabilities(vision: Vision) -> dict[str, list[str]]:
-    """The methods this service offers, and the vision model names a caller may pick.
+@app.get("/v1/capabilities", response_model=Capabilities)
+def capabilities(vision: Vision, demo: PublicDemo) -> dict:
+    """The methods this service offers, the vision model names a caller may pick, the model
+    presets a visitor may use with their own key, whether demo codes work here, and the
+    public notice.
 
-    `vision` is listed only when a vision model is configured. Nothing else about the
+    `vision` is listed only when a vision model is configured. Nothing else about any
     backend is given: no URL and no key.
     """
     methods = [MethodChoice.AUTO, MethodChoice.TEXT_LAYER, MethodChoice.TESSERACT]
     if vision.enabled:
         methods.append(MethodChoice.VISION)
-    return {"methods": [m.value for m in methods], "models": list(vision.allowed_models)}
+    return {
+        "methods": [m.value for m in methods],
+        "models": list(vision.allowed_models),
+        "presets": public_presets(),
+        "demo_available": demo.demo_available,
+        "notice": demo.notice,
+    }
 
 
 @app.post(

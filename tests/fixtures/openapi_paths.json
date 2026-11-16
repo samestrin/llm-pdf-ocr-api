@@ -66,21 +66,14 @@
   },
   "/v1/capabilities": {
     "get": {
-      "description": "The methods this service offers, and the vision model names a caller may pick.\n\n`vision` is listed only when a vision model is configured. Nothing else about the\nbackend is given: no URL and no key.",
+      "description": "The methods this service offers, the vision model names a caller may pick, the model\npresets a visitor may use with their own key, whether demo codes work here, and the\npublic notice.\n\n`vision` is listed only when a vision model is configured. Nothing else about any\nbackend is given: no URL and no key.",
       "operationId": "capabilities_v1_capabilities_get",
       "responses": {
         "200": {
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "title": "Response Capabilities V1 Capabilities Get",
-                "type": "object"
+                "$ref": "#/components/schemas/Capabilities"
               }
             }
           },

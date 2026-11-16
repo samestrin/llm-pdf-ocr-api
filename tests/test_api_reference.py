@@ -78,7 +78,8 @@ def test_the_openapi_paths_are_unchanged():
     """Snapshot of `paths`, so a change to the spec is made on purpose.
 
     Taken when Scalar replaced the docs pages; retaken when `/v1/extract` and `/v1/jobs/{id}`
-    gained their response schemas (tests/test_openapi_responses.py).
+    gained their response schemas (tests/test_openapi_responses.py), and when
+    `/v1/capabilities` gained its schema with `presets`, `demo_available` and `notice`.
     """
     snapshot = json.loads((FIXTURES / "openapi_paths.json").read_text())
 

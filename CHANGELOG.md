@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Added
+
+- `GET /v1/capabilities` also returns `presets` (each model provider's id, label and vision model, never its URL), `demo_available` (true only when the new `DEMO_GATEWAY_URL` setting is set) and `notice` (the new `PUBLIC_DEMO_NOTICE` setting), and `/openapi.json` gives its response schema. The presets live in `src/llm_pdf_ocr/presets.json` (OpenAI, OpenRouter, Synthetic, Alibaba DashScope, and `demo` for the demo-code gateway); a request may name one by id only, never by URL. `/v1/extract` and `/v1/jobs` are unchanged and ignore the new credential headers.
+
 ### Changed
 
 - README benchmark: the vision row is measured. One run on 2026-11-16 with `qwen2.5vl:7b` served by a local Ollama scored text 0.786, Table F1 0.682, 30.78 seconds a page and no failed pages; the results are in `benchmarks/results/2026-11-16.md` and `.json`. The Performance text and Known limits now give these numbers.

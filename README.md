@@ -101,7 +101,7 @@ demand for the new product line.
 | `POST /v1/extract` | Read a PDF page by page and return Markdown or JSON. Fields: `file`, `format`, `pages`, `method`, `model`. |
 | `POST /v1/jobs`, then `GET /v1/jobs/{id}` | The same request as a job, for a long PDF: progress per page, then the result. |
 | `GET /v1/jobs/{id}/pages/{n}.png` | A page the job read, as a PNG. |
-| `GET /v1/capabilities` | The methods a request may use and the vision models it may pick. |
+| `GET /v1/capabilities` | The methods a request may use, the vision models it may pick, the model presets, whether demo codes work and the public notice. |
 | `GET /` | The web page. |
 | `GET /health` | Returns `{"status": "ok"}`. |
 | `POST /ocr` | Deprecated alias kept for 0.0.1. Use `/v1/extract`. |
@@ -143,6 +143,8 @@ Everything is an environment variable; none is required.
 | `OCR_MAX_JOBS` | 20 | Jobs held at once. |
 | `OCR_MAX_IMAGE_MB` | 200 | Memory all held jobs may use for page images, together. Past it, a job still reads every page but renders no more images. |
 | `OCR_WEB_PAGE` | true | Serve the web page at `/`. Set `false` for an API-only deployment: `/` and its files answer 404. |
+| `DEMO_GATEWAY_URL` | empty | Internal address of the demo-code gateway (an OpenAI-compatible root ending in `/v1`). Demo codes work only while this is set; it is never returned to a caller. |
+| `PUBLIC_DEMO_NOTICE` | empty | A notice for a public demo, returned as `notice` by `GET /v1/capabilities`. |
 
 Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
 
