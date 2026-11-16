@@ -1,6 +1,6 @@
 # HTTP API
 
-The interactive API reference is at `/docs` (Scalar), reading the raw spec at `/openapi.json`.
+The interactive API reference is at `/docs` (Scalar), reading the raw spec at `/openapi.json`. The spec gives the body of each response of `POST /v1/extract` and `GET /v1/jobs/{id}`: the JSON document with its per-page method (or the Markdown text), the job's progress and result, and the error body below.
 
 ## Extract
 

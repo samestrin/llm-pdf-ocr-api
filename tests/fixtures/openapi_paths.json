@@ -107,26 +107,48 @@
       "responses": {
         "200": {
           "content": {
-            "application/json": {},
-            "text/markdown": {}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractedDocument"
+              }
+            },
+            "text/markdown": {
+              "schema": {
+                "type": "string"
+              }
+            }
           },
           "description": "One section or entry per page, each naming how it was read."
         },
         "400": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
           "description": "The PDF cannot be read, the page range is bad, the model is not allowed, or `vision` was asked for and no vision model is configured."
         },
         "413": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
           "description": "The file is too large, or too many pages are selected."
         },
         "422": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/HTTPValidationError"
+                "$ref": "#/components/schemas/ErrorResponse"
               }
             }
           },
-          "description": "Validation Error"
+          "description": "A missing `file` or an unknown field value: `invalid_request`."
         }
       },
       "summary": "Extract"
@@ -201,13 +223,22 @@
         "200": {
           "content": {
             "application/json": {
-              "schema": {}
+              "schema": {
+                "$ref": "#/components/schemas/JobView"
+              }
             }
           },
           "description": "Successful Response"
         },
         "404": {
-          "description": "No job with this id, or it has expired."
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "No job with this id, or it has expired: `job_not_found`."
         },
         "422": {
           "content": {

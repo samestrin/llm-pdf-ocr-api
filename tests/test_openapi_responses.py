@@ -10,9 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 import llm_pdf_ocr.app as api
+from llm_pdf_ocr import extract as extract_module
 from llm_pdf_ocr.app import app
 from llm_pdf_ocr.config import Limits
 from llm_pdf_ocr.jobs import JobStore
+from llm_pdf_ocr.ocr import OcrError
 
 BORN_DIGITAL = (Path(__file__).parent / "fixtures" / "born_digital.pdf").read_bytes()
 WAIT = 5
@@ -85,6 +87,18 @@ def test_the_json_document_from_extract_matches_its_schema():
     assert set(page["properties"]) == set(body["pages"][0])
     assert set(document["required"]) == set(body)
     assert set(page["required"]) == set(body["pages"][0])
+
+
+def test_a_failed_page_matches_its_schema(monkeypatch):
+    def fail(page, language, timeout):
+        raise OcrError("tesseract could not read the page")
+
+    monkeypatch.setattr(extract_module, "ocr_page", fail)
+    body = extract(format="json", method="tesseract").json()
+
+    assert body["pages"][0]["status"] == "failed"
+    assert body["pages"][0]["error"] is not None
+    check(body, schema("/v1/extract", "post", 200, "application/json"))
 
 
 def test_the_document_schema_refuses_a_key_the_api_does_not_send():
