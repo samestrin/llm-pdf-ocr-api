@@ -95,7 +95,7 @@ PRESETS = [
     {"id": "openrouter", "label": "OpenRouter", "vision_model": "qwen/qwen3.7-flash"},
     {"id": "synthetic", "label": "Synthetic", "vision_model": "syn:small:vision"},
     {"id": "alibaba", "label": "Alibaba (DashScope intl)", "vision_model": "qwen-vl-plus"},
-    {"id": "demo", "label": "Demo code", "vision_model": "vision"},
+    {"id": "demo", "label": "Demo code", "vision_model": "demo-vision"},
 ]
 
 
@@ -110,6 +110,7 @@ def test_capabilities_without_vision():
         "demo_available": False,
         "notice": None,
     }
+    assert '"vision"' not in response.text  # as the Docker job in CI checks
 
 
 def test_capabilities_with_vision_lists_only_method_and_model_names():

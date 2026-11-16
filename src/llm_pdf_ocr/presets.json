@@ -27,6 +27,6 @@
     "id": "demo",
     "label": "Demo code",
     "base_url_env": "DEMO_GATEWAY_URL",
-    "vision_model": "vision"
+    "vision_model": "demo-vision"
   }
 ]
