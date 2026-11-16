@@ -41,12 +41,13 @@ from enum import StrEnum
 from functools import cache
 from html import escape as escape_html
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from llm_pdf_ocr import __version__
@@ -61,7 +62,10 @@ from llm_pdf_ocr.config import (
 )
 from llm_pdf_ocr.extract import (
     Document,
+    Fallback,
+    Method,
     MethodChoice,
+    PageError,
     PageRangeError,
     TooManyPagesError,
     VisionNotConfiguredError,
@@ -70,7 +74,7 @@ from llm_pdf_ocr.extract import (
     render_markdown,
     select_pages,
 )
-from llm_pdf_ocr.jobs import Job, JobStore, TooManyJobsError
+from llm_pdf_ocr.jobs import Job, JobStatus, JobStore, TooManyJobsError
 from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
 from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError, open_pdf, render_page_image
 from llm_pdf_ocr.requestlog import RequestLog, current_request_id
@@ -141,6 +145,82 @@ app.mount("/static", _PageFiles(directory=WEB), name="static")
 class Format(StrEnum):
     MARKDOWN = "markdown"
     JSON = "json"
+
+
+# The bodies below are what the spec at /openapi.json shows. The routes still build their
+# JSON themselves (`render_json`, `get_job`); tests/test_openapi_responses.py checks each
+# live response against these schemas, so the two cannot drift apart.
+
+
+class _Schema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ErrorDetail(_Schema):
+    code: str = Field(description="What went wrong, such as `invalid_pdf` or `job_not_found`.")
+    message: str
+    request_id: str = Field(description="Also the `X-Request-ID` header and in the log line.")
+
+
+class ErrorResponse(_Schema):
+    """The body of every error: no stack trace."""
+
+    error: ErrorDetail
+
+
+class ExtractedPage(_Schema):
+    """One page: how it was read and its text. A failed page has an `error` and no text."""
+
+    page: int = Field(description="1-based.")
+    status: Literal["ok", "failed"]
+    method: Method
+    model: str | None = Field(description="The vision model, for `vision` only.")
+    text: str
+    confidence: float | None = Field(description="0 to 1, for `tesseract` only.")
+    error: PageError | None
+    fallback: Fallback | None = Field(
+        description="The vision model that failed before Tesseract read the page, and why."
+    )
+
+
+class ExtractedDocument(_Schema):
+    """The whole PDF as JSON: one entry per page read."""
+
+    page_count: int
+    failed_pages: list[int]
+    pages: list[ExtractedPage]
+
+
+class JobPage(_Schema):
+    page: int
+    status: Literal["pending", "ok", "failed"]
+
+
+class JobError(_Schema):
+    code: str
+    message: str
+
+
+class JobView(_Schema):
+    """A job's progress per page, and its result once `done`."""
+
+    id: str
+    status: JobStatus
+    format: Format
+    pages_total: int | None = Field(description="`null` until the job starts.")
+    pages_done: int
+    pages: list[JobPage]
+    result: ExtractedDocument | str | None = Field(
+        description="Once `done`: the Markdown text, or the JSON document `/v1/extract` returns."
+    )
+    error: JobError | None = Field(description="Why a `failed` job failed.")
+
+
+def _error_response(description: str) -> dict:
+    return {"description": description, "model": ErrorResponse}
+
+
+INVALID_REQUEST = _error_response("A missing `file` or an unknown field value: `invalid_request`.")
 
 
 def _error(code: str, message: str, status_code: int = 400) -> JSONResponse:
@@ -282,17 +362,19 @@ def capabilities(vision: Vision) -> dict[str, list[str]]:
 
 @app.post(
     "/v1/extract",
-    response_class=Response,
+    response_class=JSONResponse,
     responses={
         200: {
             "description": "One section or entry per page, each naming how it was read.",
-            "content": {"text/markdown": {}, "application/json": {}},
+            "model": ExtractedDocument,
+            "content": {"text/markdown": {"schema": {"type": "string"}}},
         },
-        400: {
-            "description": "The PDF cannot be read, the page range is bad, the model is not "
+        400: _error_response(
+            "The PDF cannot be read, the page range is bad, the model is not "
             "allowed, or `vision` was asked for and no vision model is configured."
-        },
-        413: {"description": "The file is too large, or too many pages are selected."},
+        ),
+        413: _error_response("The file is too large, or too many pages are selected."),
+        422: INVALID_REQUEST,
     },
 )
 def extract(
@@ -418,7 +500,8 @@ def _render_images(data: bytes, numbers: list[int], job: Job) -> None:
 
 @app.get(
     "/v1/jobs/{job_id}",
-    responses={404: {"description": "No job with this id, or it has expired."}},
+    response_model=JobView,
+    responses={404: _error_response("No job with this id, or it has expired: `job_not_found`.")},
 )
 def get_job(request: Request, job_id: str) -> Response:
     """A job's status and progress per page; `result` is set once it is `done`.
