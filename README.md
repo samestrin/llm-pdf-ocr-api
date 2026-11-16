@@ -148,17 +148,17 @@ Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend]
 
 ## Performance
 
-Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, in the run of 2026-11-03 with Tesseract 5.5.0, committed in [`benchmarks/results/2026-11-03.md`](benchmarks/results/2026-11-03.md) (raw results in [`2026-11-03.json`](benchmarks/results/2026-11-03.json)), which also has the per-document rows. The results file does not record the machine.
+Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, in the run of 2026-11-16 with Tesseract 5.5.0 and, for the vision row, `qwen2.5vl:7b` served by a local Ollama on an Apple M4 Mac mini, committed in [`benchmarks/results/2026-11-16.md`](benchmarks/results/2026-11-16.md) (raw results in [`2026-11-16.json`](benchmarks/results/2026-11-16.json)), which also has the per-document rows. The results file does not record the machine.
 
 | Method | Text score (1 − CER) | Table F1 | Seconds per page | Failed pages |
 |---|---:|---:|---:|---:|
 | `text_layer` | 0.557 | 0.000 | 0.01 | 7 |
-| `tesseract` | 0.702 | 0.000 | 2.43 | 0 |
-| `vision` | not measured | not measured | not measured | not measured |
+| `tesseract` | 0.702 | 0.000 | 2.47 | 0 |
+| `vision` | 0.786 | 0.682 | 30.78 | 0 |
 
-A document with a failed page scores 0, so `text_layer` is penalised for the seven scanned pages it cannot read (it fails them rather than guessing). Neither plain-text method recovers Markdown tables, so Table F1 is 0 for both. The vision row is empty because the committed run had no vision endpoint; it is filled in by running the benchmark with `OCR_LLM_BASE_URL` set.
+A document with a failed page scores 0, so `text_layer` is penalised for the seven scanned pages it cannot read (it fails them rather than guessing). Neither plain-text method recovers Markdown tables, so Table F1 is 0 for both. The vision row is from one run against a local Ollama with `qwen2.5vl:7b`; its seconds per page depend on that machine.
 
-To fill in the vision row, run it locally with Ollama:
+To run the vision row yourself, locally with Ollama:
 
 ```bash
 docker compose --profile vision up -d
@@ -183,7 +183,7 @@ The row will name the endpoint (local Ollama) and the model (`qwen2.5vl:7b`). Th
 - Jobs are held in the service's memory and run one at a time. Run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
 - Uploads are limited to 50 MB and 500 pages by default (`OCR_MAX_FILE_MB`, `OCR_MAX_PAGES`); a page gets 120 seconds (`OCR_PAGE_TIMEOUT_SECONDS`).
 - A finished job's result and page images are kept for 3600 seconds by default (`OCR_JOB_TTL_SECONDS`), then deleted; at most 20 jobs are held at once (`OCR_MAX_JOBS`).
-- Neither `text_layer` nor `tesseract` recovers Markdown tables (Table F1 0 in the benchmark), and the vision row is not measured yet.
+- Neither `text_layer` nor `tesseract` recovers Markdown tables (Table F1 0 in the benchmark). The vision method recovers tables (Table F1 0.682 with `qwen2.5vl:7b`) but takes about 30 seconds a page on local hardware.
 - There is no auth. Put an auth proxy in front before you expose it to a network you do not trust.
 - The web page's copy button needs `localhost` or HTTPS, as the browser allows the clipboard only there.
 
