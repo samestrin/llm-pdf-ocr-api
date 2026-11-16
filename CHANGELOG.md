@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Changed
+
+- README benchmark: the vision row is measured. One run on 2026-11-16 with `qwen2.5vl:7b` served by a local Ollama scored text 0.786, Table F1 0.682, 30.78 seconds a page and no failed pages; the results are in `benchmarks/results/2026-11-16.md` and `.json`. The Performance text and Known limits now give these numbers.
+
 ### Fixed
 
 - API reference: `POST /v1/extract` and `GET /v1/jobs/{id}` now have response schemas in `/openapi.json`, so `/docs` shows their bodies: the JSON document with each page's method (and `text/markdown` as a string), the job's progress per page with its result, and the `{"error": ...}` body for their 400, 404, 413 and 422 answers. The 422 was documented as FastAPI's `detail` list, which the service never sends. The JSON the API returns is unchanged; a test checks live responses from a fixture PDF against the schemas.
