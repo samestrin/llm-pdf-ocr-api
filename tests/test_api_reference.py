@@ -75,7 +75,11 @@ def test_redoc_is_gone():
 
 
 def test_the_openapi_paths_are_unchanged():
-    """Snapshot of `paths` taken before the viewer changed; the spec is not this task's to edit."""
+    """Snapshot of `paths`, so a change to the spec is made on purpose.
+
+    Taken when Scalar replaced the docs pages; retaken when `/v1/extract` and `/v1/jobs/{id}`
+    gained their response schemas (tests/test_openapi_responses.py).
+    """
     snapshot = json.loads((FIXTURES / "openapi_paths.json").read_text())
 
     assert client.get("/openapi.json").json()["paths"] == snapshot
