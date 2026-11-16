@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Changed
+
+- README benchmark: the vision row is measured. One run on 2026-11-16 with `qwen2.5vl:7b` served by a local Ollama scored text 0.786, Table F1 0.682, 30.78 seconds a page and no failed pages; the results are in `benchmarks/results/2026-11-16.md` and `.json`. The Performance text and Known limits now give these numbers.
+
 ### Fixed
 
 - Web page: while "Try a sample" downloads the sample PDF, the file field, Extract and Try a sample are disabled and a dropped file is ignored, as they already were while a job runs. Before, a file picked during a slow sample download was replaced by the sample and a second job could start alongside the first.

@@ -148,7 +148,7 @@ Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend]
 
 ## Performance
 
-Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, in the run of 2026-11-16 with Tesseract 5.5.0 and, for the vision row, `qwen2.5vl:7b` served by a local Ollama on an Apple M4 Mac mini, committed in [`benchmarks/results/2026-11-16.md`](benchmarks/results/2026-11-16.md) (raw results in [`2026-11-16.json`](benchmarks/results/2026-11-16.json)), which also has the per-document rows. The results file does not record the machine.
+Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, in the run of 2026-11-16 with Tesseract 5.5.4 and, for the vision row, `qwen2.5vl:7b` served by a local Ollama on an Apple M4 Mac mini, committed in [`benchmarks/results/2026-11-16.md`](benchmarks/results/2026-11-16.md) (raw results in [`2026-11-16.json`](benchmarks/results/2026-11-16.json)), which also has the per-document rows. The results file does not record the machine.
 
 | Method | Text score (1 − CER) | Table F1 | Seconds per page | Failed pages |
 |---|---:|---:|---:|---:|
@@ -169,7 +169,7 @@ export OCR_LLM_TIMEOUT_SECONDS=300
 uv run python benchmarks/run.py
 ```
 
-The row will name the endpoint (local Ollama) and the model (`qwen2.5vl:7b`). The result file records the model name only, never the endpoint URL or a key.
+The 2026-11-16 row was run this way against a local Ollama. The result file names the model (`qwen2.5vl:7b`) only, never the endpoint URL or a key.
 
 ## How it works
 
