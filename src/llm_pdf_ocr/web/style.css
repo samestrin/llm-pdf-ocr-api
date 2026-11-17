@@ -262,6 +262,20 @@ button.secondary:disabled {
   margin-left: auto;
 }
 
+/* The operator's public notice, a line of its own under the name. */
+.notice {
+  flex-basis: 100%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
 /* Page layout: the form beside the results on a desktop; below that the two stack. */
 
 .app-layout {
@@ -275,6 +289,12 @@ button.secondary:disabled {
   .app-layout {
     grid-template-columns: var(--sidebar) minmax(0, 1fr);
   }
+}
+
+.side {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
 }
 
 .panel {
@@ -380,6 +400,59 @@ form > button {
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
+}
+
+/* The key panel: closed until opened, or until a page asks for a vision read. */
+
+.key-panel summary {
+  cursor: pointer;
+  font-weight: var(--weight-bold);
+  border-radius: var(--radius-sm);
+}
+
+.key-fields {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.key-fields label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+}
+
+.key-fields select,
+.key-fields input[type="password"] {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-weight: 400;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.key-fields label.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+}
+
+.key-fields input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+
+.key-fields button {
+  justify-self: start;
 }
 
 /* Results: the empty state, the status line, then one card per page. */
@@ -637,6 +710,17 @@ mark.find-match.current {
   margin: 0 0 var(--space-2);
   color: var(--color-muted);
   font-size: var(--text-sm);
+}
+
+.needs-vision {
+  margin: 0 0 var(--space-2);
+  color: var(--color-warn);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.read-vision {
+  margin: 0 0 var(--space-2);
 }
 
 .failure {

@@ -11,13 +11,24 @@ A page to use the service from a browser: drop or pick a PDF, choose Markdown or
 
 ## What is on the page
 
-- The header names the app, LLM PDF OCR, with its mark, and has the theme button.
+- The header names the app, LLM PDF OCR, with its mark, and has the theme button. When the operator sets `PUBLIC_DEMO_NOTICE`, the notice (`notice` in `/v1/capabilities`) is shown under the name as plain text.
+- Below the form, a closed **Vision model key** panel holds a key or demo code for reading a marked page with a vision model (see below).
 - The form states this service's real limits, filled in from `OCR_MAX_FILE_MB` and `OCR_MAX_PAGES` when the page is served (for example "One PDF, up to 50 MB and 500 pages."), and says what happens to your file: it is dropped when its job ends, and the text and page images are deleted `OCR_JOB_TTL_SECONDS` later (shown in words, such as "1 hour").
 - **Try a sample** loads a small bundled PDF (`/static/samples/sample.pdf`, a copy of `tests/fixtures/mixed.pdf`, 15 KB) and reads it, so you can see a result without a file of your own. Its four pages show both routes: pages read from the text layer and scanned pages read by Tesseract.
 - Before a file is chosen, the results panel says what you will see and explains each method in one line: Auto, Text layer, Tesseract and, when the operator configured one, Vision model.
 - The footer links to the API reference at `/docs`.
 - While a job runs, the status line says "Reading page 2 of 3" with three moving dots after it (just "Reading" until the job knows its pages), above a progress bar. A failure is shown as a red banner with the API's message and its request ID.
 - Once a result is shown, a find box sits above the page cards and stays in reach while you scroll (see below).
+
+## Reading a page with a vision model
+
+A page that `auto` read with Tesseract, with no usable text layer and a failed or low-confidence result, is marked as needing a vision model (see [the API](api.md)). Its card says why ("Needs a vision model: ...") and has a **Read with a vision model** button.
+
+- The **Vision model key** panel has a **Provider** menu, a key field, a **Remember on this device** box and a **Clear key** button. The providers are the presets in `/v1/capabilities`, each shown with its vision model. **Demo code** is offered only when `demo_available` is true, and is then chosen first; the field's label changes to "Demo code" for it.
+- The key or code is kept in the browser's `sessionStorage` (key `vision-key`, with the provider), so it lasts until the tab is closed. With **Remember on this device** ticked it moves to `localStorage` instead and is still there in a new tab. **Clear key** removes it from both and empties the field.
+- The key leaves the page only in the headers of the vision read, `POST /v1/jobs/{id}/pages/{n}/vision`: `X-Model-Preset` with `X-Model-Key`, or `X-Model-Preset: demo` with `X-Demo-Code`. It is never in a URL, a request body or any other request. `tests/test_browser.py` checks this against the browser's whole network log.
+- With no key or code set, the button opens the panel and puts the cursor in the field; nothing is sent.
+- While the page is read, its button is disabled. The answer replaces the page's card, which then shows the method and model ("Method: Vision model · Model: gpt-5-nano") and the new text; the Markdown or JSON output and the downloads follow, and the find box searches the new text. If the provider fails, the API's message is shown as a banner, the page stays marked and the button can be pressed again.
 
 ## Find in the result
 

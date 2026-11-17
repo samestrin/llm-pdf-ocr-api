@@ -506,7 +506,11 @@ def test_every_control_has_an_accessible_name(live_server, page):
     page.route(
         "**/v1/capabilities",
         lambda route: route.fulfill(
-            json={"methods": ["auto", "text_layer", "tesseract", "vision"], "models": ["m-one"]}
+            json={
+                "methods": ["auto", "text_layer", "tesseract", "vision"],
+                "models": ["m-one"],
+                "presets": PRESETS,
+            }
         ),
     )
     _extract(page, live_server, _pdf(PAGE_ONE), method="vision")
@@ -519,7 +523,9 @@ def test_every_control_has_an_accessible_name(live_server, page):
 
     controls = page.locator("input, select, button")
     ids = [controls.nth(n).get_attribute("id") for n in range(controls.count())]
-    assert set(ids) == CONTROLS | {"model", "find-input", "find-prev", "find-next"}
+    key = {"key-preset", "key-input", "key-remember", "key-clear"}
+    assert set(ids) == CONTROLS | key | {"model", "find-input", "find-prev", "find-next"}
+    page.locator("#key-panel summary").click()
     names = {
         "theme-toggle": "Light theme" if page.evaluate(_DARK) else "Dark theme",
         "file": "PDF file",
@@ -534,6 +540,10 @@ def test_every_control_has_an_accessible_name(live_server, page):
         "copy": "Copy Markdown",
         "download-md": "Download Markdown",
         "download-json": "Download JSON",
+        "key-preset": "Provider",
+        "key-input": "API key",
+        "key-remember": "Remember on this device",
+        "key-clear": "Clear key",
     }
     for element_id, name in names.items():
         expect(page.locator(f"#{element_id}")).to_have_accessible_name(name)
@@ -1202,3 +1212,467 @@ def test_find_controls_are_keyboard_reachable_with_a_focus_ring(
         ring = page.evaluate(_RING)
         assert ring["id"] == element_id
         assert ring["style"] not in ("none", "auto") and ring["width"] >= 2, ring
+
+
+# The key panel and reading a marked page with a vision model (epic 07 T3).
+
+KEY = "sk-test-0123456789abcdef"
+DEMO_CODE = "demo-code-42"
+NOTICE = "Public demo: files are read here, never stored. " + ATTACK
+REASON = "Tesseract confidence 0.31 is under 0.6"
+VISION_TEXT = "Page two, as the vision model read it."
+PRESETS = [
+    {"id": "openai", "label": "OpenAI", "vision_model": "gpt-5-nano"},
+    {"id": "openrouter", "label": "OpenRouter", "vision_model": "qwen/qwen3.7-flash"},
+    {"id": "demo", "label": "Demo code", "vision_model": "demo-vision"},
+]
+
+
+def _capabilities(page, demo_available: bool = False, notice: str | None = None) -> None:
+    caps = {
+        "methods": ["auto", "text_layer", "tesseract"],
+        "models": [],
+        "presets": PRESETS,
+        "demo_available": demo_available,
+        "notice": notice,
+    }
+    page.route("**/v1/capabilities", lambda route: route.fulfill(json=caps))
+
+
+def _marked_doc() -> Document:
+    """Two pages: a text-layer page, then a Tesseract page marked as needing vision."""
+    return Document(
+        pages=[
+            Page(number=1, status="ok", method=Method.TEXT_LAYER, text=PAGE_ONE),
+            Page(
+                number=2,
+                status="ok",
+                method=Method.TESSERACT,
+                text="Pa9e tw0",
+                confidence=0.31,
+                needs_vision=True,
+                needs_vision_reason=REASON,
+            ),
+        ]
+    )
+
+
+def _vision_page(model: str = "gpt-5-nano") -> dict:
+    return {
+        "page": 2,
+        "status": "ok",
+        "method": "vision",
+        "model": model,
+        "text": VISION_TEXT,
+        "confidence": None,
+        "error": None,
+        "fallback": None,
+        "needs_vision": False,
+        "needs_vision_reason": None,
+    }
+
+
+def _marked_result(page, base: str, fmt: str = "markdown", **caps) -> None:
+    """A done job whose page 2 is marked `needs_vision`, shown on the page."""
+    _capabilities(page, **caps)
+    page.route(
+        re.compile(r"/pages/\d+\.png$"),
+        lambda route: route.fulfill(status=200, content_type="image/png", body=_PNG_1PX),
+    )
+    _first_poll(
+        page,
+        {
+            "status": "done",
+            "pages_total": 2,
+            "pages_done": 2,
+            "result": json.loads(render_json(_marked_doc())),
+            "error": None,
+        },
+    )
+    _extract(page, base, _pdf(PAGE_ONE, PAGE_TWO), method="auto", fmt=fmt)
+    _done(page)
+
+
+def _vision_route(page, answer) -> list:
+    """Answer every vision read with `answer(route)`; return the requests it saw."""
+    seen = []
+
+    def handle(route):
+        seen.append(route.request)
+        return answer(route)
+
+    page.route(re.compile(r"/v1/jobs/[\w-]+/pages/\d+/vision$"), handle)
+    return seen
+
+
+def _stored(page) -> dict:
+    return page.evaluate(
+        """() => ({
+          session: sessionStorage.getItem("vision-key"),
+          local: localStorage.getItem("vision-key"),
+        })"""
+    )
+
+
+def test_the_notice_is_in_the_header_as_plain_text(live_server, page, dialogs):
+    _capabilities(page, notice=NOTICE)
+    page.goto(live_server + "/")
+
+    notice = page.locator("header #notice")
+    expect(notice).to_be_visible()
+    expect(notice).to_have_text(NOTICE)
+    assert page.locator("header img").count() == 0
+    assert dialogs == []
+
+
+def test_no_notice_shows_nothing(live_server, page):
+    _capabilities(page)
+    page.goto(live_server + "/")
+    expect(page.locator("#key-panel")).to_be_visible()  # capabilities have been applied
+    expect(page.locator("#notice")).to_be_hidden()
+
+
+def test_the_provider_list_comes_from_capabilities_and_demo_only_when_available(live_server, page):
+    _capabilities(page)
+    page.goto(live_server + "/")
+    options = page.locator("#key-preset option")
+    expect(options).to_have_text(["OpenAI (gpt-5-nano)", "OpenRouter (qwen/qwen3.7-flash)"])
+    expect(page.locator("#key-label")).to_have_text("API key")
+
+    page.unroute_all()
+    _capabilities(page, demo_available=True)
+    page.reload()
+    expect(options).to_have_text(
+        ["OpenAI (gpt-5-nano)", "OpenRouter (qwen/qwen3.7-flash)", "Demo code"]
+    )
+    expect(page.locator("#key-preset")).to_have_value("demo")  # the demo, when there is one
+    expect(page.locator("#key-label")).to_have_text("Demo code")
+    page.locator("#key-panel summary").click()
+    page.select_option("#key-preset", "openai")
+    expect(page.locator("#key-label")).to_have_text("API key")
+
+
+def test_without_presets_there_is_no_panel_and_no_read_button(live_server, page, fresh_jobs):
+    page.route(
+        "**/v1/capabilities",
+        lambda route: route.fulfill(json={"methods": ["auto"], "models": [], "presets": []}),
+    )
+    _first_poll(
+        page,
+        {
+            "status": "done",
+            "pages_total": 2,
+            "pages_done": 2,
+            "result": json.loads(render_json(_marked_doc())),
+            "error": None,
+        },
+    )
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO), method="auto")
+    _done(page)
+
+    expect(page.locator("#key-panel")).to_be_hidden()
+    expect(page.locator(".needs-vision")).to_have_text(f"Needs a vision model: {REASON}")
+    expect(page.locator(".read-vision")).to_be_hidden()
+
+
+def test_the_key_is_kept_in_session_storage_by_default(live_server, page):
+    _capabilities(page)
+    page.goto(live_server + "/")
+    page.locator("#key-panel summary").click()
+    page.select_option("#key-preset", "openrouter")
+    page.fill("#key-input", KEY)
+
+    stored = _stored(page)
+    assert stored["local"] is None
+    assert json.loads(stored["session"]) == {"preset": "openrouter", "key": KEY}
+    assert page.locator("#key-input").get_attribute("type") == "password"
+
+    page.reload()  # the same tab keeps it
+    expect(page.locator("#key-input")).to_have_value(KEY)
+    expect(page.locator("#key-preset")).to_have_value("openrouter")
+    expect(page.locator("#key-remember")).not_to_be_checked()
+
+
+def test_remember_on_this_device_moves_the_key_to_local_storage(live_server, page):
+    _capabilities(page)
+    page.goto(live_server + "/")
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+    page.check("#key-remember")
+
+    stored = _stored(page)
+    assert stored["session"] is None
+    assert json.loads(stored["local"]) == {"preset": "openai", "key": KEY}
+
+    page.evaluate("sessionStorage.clear()")  # as a new tab would start
+    page.reload()
+    expect(page.locator("#key-input")).to_have_value(KEY)
+    expect(page.locator("#key-remember")).to_be_checked()
+    page.locator("#key-panel summary").click()
+
+    page.uncheck("#key-remember")
+    stored = _stored(page)
+    assert stored["local"] is None
+    assert json.loads(stored["session"])["key"] == KEY
+
+
+@pytest.mark.parametrize("remember", [False, True])
+def test_clear_removes_the_key_from_storage_and_the_field(live_server, page, remember):
+    _capabilities(page)
+    page.goto(live_server + "/")
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+    if remember:
+        page.check("#key-remember")
+    assert _stored(page) != {"session": None, "local": None}
+
+    page.click("#key-clear")
+
+    assert _stored(page) == {"session": None, "local": None}
+    expect(page.locator("#key-input")).to_have_value("")
+    expect(page.locator("#key-remember")).not_to_be_checked()
+    expect(page.locator("#key-input")).to_be_focused()
+    expect(page.locator("#status")).to_have_text("Key cleared from this browser.")
+    page.reload()
+    expect(page.locator("#key-input")).to_have_value("")
+
+
+def test_a_marked_page_says_why_and_the_markdown_matches_the_api(live_server, page, fresh_jobs):
+    _marked_result(page, live_server)
+
+    cards = page.locator(".page-result")
+    expect(cards.nth(0).locator(".read-vision")).to_have_count(0)
+    marked = cards.nth(1)
+    expect(marked.locator(".needs-vision")).to_have_text(f"Needs a vision model: {REASON}")
+    expect(marked.locator(".read-vision")).to_have_text("Read with a vision model")
+    assert page.locator("#result").text_content() == render_markdown(_marked_doc())
+
+
+def test_read_without_a_key_opens_the_panel_and_sends_nothing(live_server, page, fresh_jobs):
+    _marked_result(page, live_server)
+    reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
+    expect(page.locator("#key-panel")).not_to_have_attribute("open", "")
+
+    page.click(".read-vision")
+
+    expect(page.locator("#key-panel")).to_have_attribute("open", "")
+    expect(page.locator("#key-input")).to_be_focused()
+    expect(page.locator("#status")).to_have_text(
+        "Enter an API key, then press Read with a vision model again."
+    )
+    assert reads == []
+
+
+def test_the_key_leaves_the_page_only_in_the_header_of_the_vision_read(
+    live_server, page, fresh_jobs
+):
+    log = []
+    page.on("request", lambda request: log.append(request))
+    _marked_result(page, live_server)
+    reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+
+    page.click(".read-vision")
+    expect(page.locator(".page-result").nth(1).locator(".method")).to_have_text(
+        "Method: Vision model · Model: gpt-5-nano"
+    )
+    page.wait_for_load_state("networkidle")
+
+    assert len(reads) == 1
+    read = reads[0]
+    assert read.method == "POST"
+    assert re.search(r"/v1/jobs/[\w-]+/pages/2/vision$", read.url)
+    headers = read.all_headers()
+    assert headers["x-model-preset"] == "openai"
+    assert headers["x-model-key"] == KEY
+    assert "x-demo-code" not in headers
+    assert not read.post_data_buffer
+
+    # Across the whole network log, the key is in that one header and nowhere else: no
+    # URL, no body, no other header of any request.
+    carrying = []
+    for request in log:
+        places = [request.url.encode(), request.post_data_buffer or b""]
+        places += [
+            f"{k}: {v}".encode() for k, v in request.all_headers().items() if k != "x-model-key"
+        ]
+        if any(KEY.encode() in place for place in places):
+            carrying.append(request.url)
+    assert carrying == []
+    assert [r.url for r in log if "x-model-key" in r.all_headers()] == [read.url]
+
+
+def test_a_demo_code_is_sent_as_x_demo_code_with_the_demo_preset(live_server, page, fresh_jobs):
+    _marked_result(page, live_server, demo_available=True)
+    reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page("demo-vision")))
+    page.click(".read-vision")  # no code yet: the panel opens
+    expect(page.locator("#status")).to_have_text(
+        "Enter a demo code, then press Read with a vision model again."
+    )
+    page.fill("#key-input", DEMO_CODE)
+
+    page.click(".read-vision")
+    expect(page.locator(".page-result").nth(1).locator(".method")).to_have_text(
+        "Method: Vision model · Model: demo-vision"
+    )
+    headers = reads[0].all_headers()
+    assert headers["x-model-preset"] == "demo"
+    assert headers["x-demo-code"] == DEMO_CODE
+    assert "x-model-key" not in headers
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "json"])
+def test_the_button_reads_the_page_and_shows_its_method_and_model(
+    live_server, page, fmt, fresh_jobs
+):
+    _marked_result(page, live_server, fmt=fmt)
+    _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+
+    page.click(".read-vision")
+
+    card = page.locator(".page-result").nth(1)
+    expect(card.locator(".method")).to_have_text("Method: Vision model · Model: gpt-5-nano")
+    expect(card.locator(".text")).to_have_text(VISION_TEXT)
+    expect(card.locator(".needs-vision")).to_have_count(0)
+    expect(card.locator(".read-vision")).to_have_count(0)
+    expect(card.locator("h3")).to_be_focused()
+    expect(page.locator("#status")).to_have_text(
+        "Page 2 read. Method: Vision model · Model: gpt-5-nano."
+    )
+    expect(page.locator(".page-result").nth(0).locator(".text")).to_have_text(PAGE_ONE)
+
+    doc = _marked_doc()
+    doc.pages[1] = Page(
+        number=2, status="ok", method=Method.VISION, model="gpt-5-nano", text=VISION_TEXT
+    )
+    shown = page.locator("#result").text_content()
+    if fmt == "json":
+        assert json.loads(shown) == json.loads(render_json(doc))
+    else:
+        assert shown == render_markdown(doc)
+    with page.expect_download() as info:
+        page.click("#download-json")
+    assert json.load(open(info.value.path(), encoding="utf-8")) == json.loads(render_json(doc))
+
+
+def test_find_covers_the_page_a_vision_read_replaced(live_server, page, fresh_jobs):
+    _marked_result(page, live_server)
+    _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
+    page.fill("#find-input", "vision model read")
+    expect(page.locator("#find-count")).to_have_text("No matches")
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+
+    page.click(".read-vision")
+
+    expect(page.locator("#find-count")).to_have_text("1 of 2")  # the card and the output
+    expect(page.locator(".page-result").nth(1).locator("mark.find-match")).to_have_count(1)
+
+
+def test_a_provider_error_is_shown_and_the_page_can_be_tried_again(live_server, page, fresh_jobs):
+    _marked_result(page, live_server)
+    error = {
+        "error": {
+            "code": "vision_failed",
+            "message": "the provider did not accept the key",
+            "request_id": "req-1",
+        }
+    }
+    answers = [
+        lambda r: r.fulfill(status=502, json=error),
+        lambda r: r.fulfill(json=_vision_page()),
+    ]
+    reads = _vision_route(page, lambda route: answers[len(reads) - 1](route))
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+
+    page.click(".read-vision")
+    expect(page.locator("#status")).to_have_text(
+        "the provider did not accept the key (Request ID: req-1)"
+    )
+    expect(page.locator("#status")).to_have_class(re.compile("error"))
+    card = page.locator(".page-result").nth(1)
+    expect(card.locator(".needs-vision")).to_be_visible()
+    expect(card.locator(".read-vision")).to_be_enabled()
+
+    card.locator(".read-vision").click()
+    expect(card.locator(".method")).to_have_text("Method: Vision model · Model: gpt-5-nano")
+    assert len(reads) == 2
+
+
+def test_the_button_is_disabled_while_its_page_is_read(live_server, page, fresh_jobs):
+    _marked_result(page, live_server)
+    held = []
+    _vision_route(page, held.append)
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+
+    page.click(".read-vision")
+    expect(page.locator(".read-vision")).to_be_disabled()
+    expect(page.locator("#status")).to_have_text("Reading page 2 with a vision model…")
+    held[0].fulfill(json=_vision_page())
+    expect(page.locator(".read-vision")).to_have_count(0)
+
+
+def test_a_read_that_ends_after_a_new_job_started_changes_nothing(live_server, page, fresh_jobs):
+    _marked_result(page, live_server)
+    held = []
+    _vision_route(page, held.append)
+    page.locator("#key-panel summary").click()
+    page.fill("#key-input", KEY)
+    page.click(".read-vision")
+    expect(page.locator(".read-vision")).to_be_disabled()
+
+    page.select_option("#method", "text_layer")
+    page.click("#submit")
+    _done(page)
+    held[0].fulfill(json=_vision_page())
+    page.wait_for_timeout(200)
+
+    expect(page.locator(".page-result .method").nth(1)).to_have_text("Method: Text layer")
+    assert VISION_TEXT not in page.locator("#result").text_content()
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_the_key_panel_and_read_button_take_a_focus_ring_and_meet_wcag_aa(
+    live_server, page, scheme, fresh_jobs
+):
+    page.emulate_media(color_scheme=scheme)
+    _marked_result(page, live_server, notice=NOTICE, demo_available=True)
+    page.locator("#key-panel summary").click()
+
+    seen = page.evaluate(_CONTRAST, "select, #key-input")
+    whats = {s["what"] for s in seen}
+    assert {"notice", "needs-vision", "secondary read-vision", "key-preset", "key-input"} <= whats
+    low = [s for s in seen if s["ratio"] < 4.5]
+    assert low == [], low
+
+    page.locator("#key-panel summary").focus()
+    for selector in ("#key-preset", "#key-input", "#key-remember", "#key-clear", ".read-vision"):
+        for _ in range(30):
+            page.keyboard.press("Tab")
+            if page.evaluate("(s) => document.activeElement.matches(s)", selector):
+                break
+        else:
+            raise AssertionError(f"{selector} is not reachable with Tab")
+        style = page.evaluate(
+            "() => { const s = getComputedStyle(document.activeElement);"
+            " return [s.outlineStyle, parseFloat(s.outlineWidth)]; }"
+        )
+        assert style[0] not in ("none", "auto") and style[1] >= 2, (selector, style)
+
+
+@pytest.mark.parametrize("width", [375, 320])
+def test_the_notice_panel_and_marked_page_fit_at_phone_width(live_server, page, width, fresh_jobs):
+    page.set_viewport_size({"width": width, "height": 800})
+    _marked_result(page, live_server, notice=NOTICE + " " + "x" * 200, demo_available=True)
+    page.locator("#key-panel summary").click()
+
+    widths = page.evaluate(_WIDTHS)
+    assert widths[0] <= widths[1] == width
+    for selector in ("#notice", "#key-preset", "#key-input", "#key-clear", ".read-vision"):
+        box = page.locator(selector).bounding_box()
+        assert box["x"] >= 0 and box["x"] + box["width"] <= width, selector
