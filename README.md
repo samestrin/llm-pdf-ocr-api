@@ -139,7 +139,7 @@ Everything is an environment variable; none is required.
 | `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. The web page states it. |
 | `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. The web page states it. |
 | `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
-| `OCR_LOW_CONFIDENCE` | 0.6 | A page with no usable text layer that Tesseract failed or scored under this (0 to 1) is marked `needs_vision`. |
+| `OCR_LOW_CONFIDENCE` | 0.6 | A page with no usable text layer that Tesseract failed or scored under this (over 0, at most 1) is marked `needs_vision`; the Markdown still shows its Tesseract text after the note. |
 | `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. The web page states it. |
 | `OCR_MAX_JOBS` | 20 | Jobs held at once. |
 | `OCR_MAX_IMAGE_MB` | 200 | Memory all held jobs may use for page images, together. Past it, a job still reads every page but renders no more images. |

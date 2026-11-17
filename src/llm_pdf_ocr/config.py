@@ -107,8 +107,10 @@ def load_limits(env: Mapping[str, str] | None = None) -> Limits:
     env = os.environ if env is None else env
     max_file_mb = _number(env, "OCR_MAX_FILE_MB", DEFAULT_MAX_FILE_MB, float)
     low_confidence = _number(env, "OCR_LOW_CONFIDENCE", DEFAULT_LOW_CONFIDENCE, float)
-    if low_confidence > 1:
-        raise ConfigError(f"OCR_LOW_CONFIDENCE must be at most 1, got {low_confidence:g}")
+    if not 0 < low_confidence <= 1:  # also refuses nan, which every comparison fails
+        raise ConfigError(
+            f"OCR_LOW_CONFIDENCE must be over 0 and at most 1, got {low_confidence:g}"
+        )
     return Limits(
         max_file_bytes=int(max_file_mb * _MiB),
         max_pages=_number(env, "OCR_MAX_PAGES", DEFAULT_MAX_PAGES, int),

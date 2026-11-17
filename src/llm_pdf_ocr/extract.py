@@ -314,7 +314,7 @@ def render_markdown(doc: Document) -> str:
             ]
         if page.needs_vision:
             lines += ["", f"> Needs a vision model: {page.needs_vision_reason}"]
-        elif page.text:
+        if page.error is None and page.text:
             lines += ["", page.text]
         sections.append("\n".join(lines))
     return "\n\n".join(sections) + "\n"
