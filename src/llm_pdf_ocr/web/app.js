@@ -68,11 +68,17 @@ async function request(url, options) {
   }
 }
 
-// Offer the vision method, and its models, only when the operator configured one.
+// The public notice and the key panel's presets come from the capabilities too. Offer
+// the vision method, and its models, only when the operator configured one.
 async function loadCapabilities() {
   const response = await fetch("/v1/capabilities");
   if (!response.ok) return;
   const caps = await response.json();
+  if (caps.notice) {
+    $("notice").textContent = caps.notice;
+    $("notice").hidden = false;
+  }
+  showPresets(caps.presets || [], Boolean(caps.demo_available));
   if (!caps.methods.includes("vision")) return;
   const vision = method.querySelector('option[value="vision"]');
   vision.disabled = false;
@@ -85,6 +91,122 @@ async function loadCapabilities() {
     model.append(option);
   }
 }
+
+// The key panel: the visitor's own key, or a demo code, for reading a marked page with a
+// vision model. Each provider keeps its own key, so a key typed for one is never sent to
+// another. They stay in this browser, in sessionStorage unless "Remember on this device"
+// is ticked (then localStorage), and leave the page only in the header of a vision read:
+// X-Model-Preset with X-Model-Key, or X-Demo-Code for the demo preset.
+const KEY_STORE = "vision-keys";
+const DEMO = "demo";
+const keyPanel = $("key-panel");
+const keyPreset = $("key-preset");
+const keyLabel = $("key-label");
+const keyInput = $("key-input");
+const keyRemember = $("key-remember");
+let keys = {}; // provider id -> key or demo code
+
+// Storage can be blocked; the keys then last until the page is left.
+function storage(name) {
+  try {
+    return window[name];
+  } catch (_) {
+    return null;
+  }
+}
+
+// What is stored: the provider last chosen and each provider's key.
+function loadKeys() {
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try {
+      const saved = JSON.parse(storage(name).getItem(KEY_STORE));
+      if (saved && saved.keys && typeof saved.keys === "object") {
+        const found = {};
+        for (const [id, key] of Object.entries(saved.keys)) {
+          if (typeof key === "string" && key) found[id] = key;
+        }
+        return { preset: saved.preset, keys: found, remember: name === "localStorage" };
+      }
+    } catch (_) {
+      // nothing usable stored here
+    }
+  }
+  return null;
+}
+
+function forgetKeys() {
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try {
+      storage(name).removeItem(KEY_STORE);
+    } catch (_) {
+      // blocked: nothing was stored
+    }
+  }
+}
+
+function saveKeys() {
+  forgetKeys();
+  if (!Object.keys(keys).length) return;
+  try {
+    const store = storage(keyRemember.checked ? "localStorage" : "sessionStorage");
+    store.setItem(KEY_STORE, JSON.stringify({ preset: keyPreset.value, keys }));
+  } catch (_) {
+    // blocked: the keys stay on this page only
+  }
+}
+
+function syncKeyLabel() {
+  keyLabel.textContent = keyPreset.value === DEMO ? "Demo code" : "API key";
+}
+
+// Fill the provider list (the demo preset only when demo codes work here), then the
+// stored keys, if any.
+function showPresets(presets, demoAvailable) {
+  const offered = presets.filter((p) => p.id !== DEMO || demoAvailable);
+  if (!offered.length) return;
+  for (const preset of offered) {
+    const label = preset.id === DEMO ? preset.label : `${preset.label} (${preset.vision_model})`;
+    const option = el("option", "", label);
+    option.value = preset.id;
+    keyPreset.append(option);
+  }
+  const saved = loadKeys();
+  const ids = offered.map((p) => p.id);
+  const preferred = saved && ids.includes(saved.preset) ? saved.preset : null;
+  keyPreset.value = preferred || (demoAvailable ? DEMO : offered[0].id);
+  if (saved) {
+    for (const id of ids) if (saved.keys[id]) keys[id] = saved.keys[id];
+    keyRemember.checked = saved.remember;
+  }
+  keyInput.value = keys[keyPreset.value] || "";
+  syncKeyLabel();
+  keyPanel.hidden = false;
+  for (const button of pageList.querySelectorAll(".read-vision")) button.hidden = false;
+}
+
+function clearKey() {
+  forgetKeys();
+  keys = {};
+  keyInput.value = "";
+  keyRemember.checked = false;
+  showStatus("Key cleared from this browser.");
+  keyInput.focus();
+}
+
+// The field always shows the chosen provider's own key, or nothing.
+keyPreset.addEventListener("change", () => {
+  keyInput.value = keys[keyPreset.value] || "";
+  syncKeyLabel();
+  saveKeys();
+});
+keyInput.addEventListener("input", () => {
+  const key = keyInput.value.trim();
+  if (key) keys[keyPreset.value] = key;
+  else delete keys[keyPreset.value];
+  saveKeys();
+});
+keyRemember.addEventListener("change", saveKeys);
+$("key-clear").addEventListener("click", clearKey);
 
 function syncModelField() {
   modelField.hidden = method.value !== "vision";
@@ -152,7 +274,7 @@ function methodLabel(page) {
 
 // One card per page: its image beside its text, its method, and why it failed if it did.
 // The image is a thumbnail that opens full size in a new tab.
-function pageCard(jobId, page) {
+function pageCard(jobId, page, doc) {
   const card = el("li", page.status === "failed" ? "page-result failed" : "page-result");
   const figure = el("div", "page-figure");
   const image = el("img", "page-image");
@@ -170,13 +292,22 @@ function pageCard(jobId, page) {
   figure.append(link);
 
   const body = el("div", "page-body");
-  body.append(el("h3", "", `Page ${page.page}`), el("p", "method", methodLabel(page)));
+  const heading = el("h3", "", `Page ${page.page}`);
+  heading.tabIndex = -1; // focused when a vision read replaces the card
+  body.append(heading, el("p", "method", methodLabel(page)));
   if (page.fallback) body.append(el("p", "fallback", fallbackLine(page.fallback)));
   if (page.error) {
     body.append(el("p", "failure", `Failed (${page.error.code}): ${page.error.message}`));
-  } else {
-    body.append(el("pre", "text", page.text));
   }
+  if (page.needs_vision) {
+    body.append(el("p", "needs-vision", `Needs a vision model: ${page.needs_vision_reason}`));
+    const read = el("button", "secondary read-vision", "Read with a vision model");
+    read.type = "button";
+    read.hidden = !keyPreset.options.length; // no provider to read it with
+    read.addEventListener("click", () => readWithVision(jobId, doc, page.page, card, read));
+    body.append(read);
+  }
+  if (!page.error) body.append(el("pre", "text", page.text));
   card.append(figure, body);
   return card;
 }
@@ -188,15 +319,16 @@ function markdown(doc) {
     if (page.fallback) lines.push("", `> ${fallbackLine(page.fallback)}`);
     if (page.error) {
       lines.push("", `> **Page ${page.page} failed** (${page.error.code}): ${page.error.message}`);
-    } else if (page.text) {
-      lines.push("", page.text);
     }
+    if (page.needs_vision) lines.push("", `> Needs a vision model: ${page.needs_vision_reason}`);
+    if (!page.error && page.text) lines.push("", page.text);
     return lines.join("\n");
   });
   return sections.join("\n\n") + "\n";
 }
 
 let current = null; // the finished document, for copy and download
+let currentFormat = "markdown"; // how the whole output is shown
 
 function download(name, type, text) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -227,11 +359,57 @@ $("download-json").addEventListener("click", () => {
   if (current) download("result.json", "application/json", JSON.stringify(current, null, 2));
 });
 
+function output(doc) {
+  return currentFormat === "json" ? JSON.stringify(doc, null, 2) : markdown(doc);
+}
+
 function showResult(jobId, doc, format) {
   current = doc;
-  pageList.replaceChildren(...doc.pages.map((page) => pageCard(jobId, page)));
-  result.textContent = format === "json" ? JSON.stringify(doc, null, 2) : markdown(doc);
+  currentFormat = format;
+  pageList.replaceChildren(...doc.pages.map((page) => pageCard(jobId, page, doc)));
+  result.textContent = output(doc);
   results.hidden = false;
+}
+
+// Read one marked page with a vision model, with the key panel's preset and key or demo
+// code, and put the answer in place of the page. With no key yet, open the panel.
+async function readWithVision(jobId, doc, number, card, button) {
+  const preset = keyPreset.value;
+  const secret = keys[preset] || "";
+  if (!secret) {
+    keyPanel.open = true;
+    keyInput.focus();
+    showStatus(
+      `Enter ${preset === DEMO ? "a demo code" : "an API key"}, then press Read with a vision model again.`,
+    );
+    return;
+  }
+  const headers = { "X-Model-Preset": preset };
+  headers[preset === DEMO ? "X-Demo-Code" : "X-Model-Key"] = secret;
+  button.disabled = true;
+  showBusy(`Reading page ${number} with a vision model`);
+  try {
+    const url = `/v1/jobs/${encodeURIComponent(jobId)}/pages/${number}/vision`;
+    const response = await request(url, { method: "POST", headers });
+    if (!response.ok) throw new Error(await errorMessage(response));
+    const page = await response.json();
+    if (current !== doc) return; // a new job replaced this result meanwhile
+    doc.pages = doc.pages.map((p) => (p.page === number ? page : p));
+    doc.failed_pages = doc.pages.filter((p) => p.status === "failed").map((p) => p.page);
+    const replacement = pageCard(jobId, page, doc);
+    card.replaceWith(replacement);
+    const query = findInput.value;
+    clearFind();
+    result.textContent = output(doc);
+    findInput.value = query;
+    runFind();
+    showStatus(`Page ${number} read. ${methodLabel(page)}.`);
+    replacement.querySelector("h3").focus();
+  } catch (err) {
+    if (current !== doc) return;
+    button.disabled = false;
+    showStatus(err.message, true);
+  }
 }
 
 function clearResult() {
