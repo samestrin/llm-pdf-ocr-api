@@ -24,6 +24,8 @@ To read scanned pages with a vision model, local or in the cloud, see [Vision mo
 
 If the vision model times out, is rate limited (HTTP 429), returns an error or sends a reply that cannot be read, the page is `failed` with `vision_failed` and a message giving the reason. If the operator sets `OCR_LLM_FALLBACK_TO_TESSERACT=true` (off by default; `docker-compose.yml` turns it on unless you set it), Tesseract reads that page instead: its `method` is `tesseract` and its `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the vision model and the reason it failed. `fallback` is `null` on every other page.
 
+A page `auto` read with Tesseract because it has no usable text layer, where Tesseract failed or scored under `OCR_LOW_CONFIDENCE` (default 0.6), is marked `needs_vision: true` with a `needs_vision_reason` (JSON), or a `Needs a vision model: ...` line (Markdown). Every other page has `needs_vision: false` and `needs_vision_reason: null`. In a job, such a page can be read again with a vision model: see [Read one page with a vision model](#read-one-page-with-a-vision-model).
+
 ## Jobs
 
 **Endpoint:** `/v1/jobs` **Method:** POST, then `/v1/jobs/{id}` **Method:** GET
@@ -38,7 +40,30 @@ curl -o page1.png localhost:5000/v1/jobs/<id>/pages/1.png
 
 While a job runs it renders each page it reads as a PNG (100 DPI, longer side at most 1600 px), served at `GET /v1/jobs/{id}/pages/{n}.png`. A page the job does not read, or has not rendered yet, answers 404 `page_not_found`. So does a page past `OCR_MAX_IMAGE_MB` (default 200): the images of every held job count against it together, a job that reaches it renders no more images (it still reads every page, and the web page shows "Image not available" beside that page's text), and a job's images count until it expires.
 
-Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, and the result and page images `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+Jobs are held in the service's memory and run one at a time. The PDF is dropped when its job ends, unless a page of its result is marked `needs_vision`: then the job keeps the PDF in memory until it expires, so that page can be read with a vision model, and drops it once no page needs vision. Every held job's PDF is at most `OCR_MAX_FILE_MB`, so the PDFs kept this way take at most `OCR_MAX_FILE_MB` x `OCR_MAX_JOBS` (1000 MB with the defaults). The result and page images `OCR_JOB_TTL_SECONDS` (default 3600) after that; then the job answers 404 `job_not_found`. At most `OCR_MAX_JOBS` (default 20) jobs are held at once, finished ones included until they expire; over that, `POST` answers 429 `too_many_jobs`. Because jobs live in memory, run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
+
+### Read one page with a vision model
+
+**Endpoint:** `/v1/jobs/{id}/pages/{n}/vision` **Method:** POST
+
+Reads page `n` of a `done` job, marked `needs_vision`, with a vision model, and replaces that page in the job's result: its `method` becomes `vision`, with the `model` and its `text`. The answer is the page as it now appears in the JSON result. The page is rendered again at 150 DPI from the PDF the job kept.
+
+The model comes from the request's credentials, used for this request only and never stored or logged: `X-Model-Preset` (a preset id from `GET /v1/capabilities`) with `X-Model-Key`, or `X-Demo-Code` for the `demo` preset. With none of them, the operator's own vision backend is used if one is configured.
+
+```bash
+curl -X POST -H 'X-Model-Preset: openai' -H "X-Model-Key: $KEY" localhost:5000/v1/jobs/<id>/pages/1/vision
+```
+
+| Status | Code | When |
+|---|---|---|
+| 401 | `credentials_required` | No credentials, and no vision backend configured. |
+| 400 | `preset_not_allowed`, `invalid_key` | A preset this service does not offer, or a malformed key. |
+| 404 | `job_not_found` | No such job, or it has expired. |
+| 404 | `page_not_found` | The job did not read this page. |
+| 409 | `job_not_done` | The job is still reading the PDF. |
+| 409 | `vision_not_needed` | The page is not marked `needs_vision` (or was read with vision already). |
+| 409 | `page_busy` | The page is being read by another request. |
+| 502 | `vision_failed` | The provider could not read the page; the message says why in plain words, such as `the provider did not accept the key`. The page stays marked and may be tried again. |
 
 ## Web page
 
