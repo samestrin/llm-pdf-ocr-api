@@ -139,6 +139,7 @@ Everything is an environment variable; none is required.
 | `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. The web page states it. |
 | `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. The web page states it. |
 | `OCR_PAGE_TIMEOUT_SECONDS` | 120 | Time allowed per page. |
+| `OCR_LOW_CONFIDENCE` | 0.6 | A page with no usable text layer that Tesseract failed or scored under this (over 0, at most 1) is marked `needs_vision`; the Markdown still shows its Tesseract text after the note. |
 | `OCR_JOB_TTL_SECONDS` | 3600 | How long a finished job's result is kept. The web page states it. |
 | `OCR_MAX_JOBS` | 20 | Jobs held at once. |
 | `OCR_MAX_IMAGE_MB` | 200 | Memory all held jobs may use for page images, together. Past it, a job still reads every page but renders no more images. |
@@ -185,6 +186,7 @@ The 2026-11-16 row was run this way against a local Ollama. The result file name
 - Jobs are held in the service's memory and run one at a time. Run a single uvicorn worker, as the Docker image does, and expect jobs to be lost on a restart.
 - Uploads are limited to 50 MB and 500 pages by default (`OCR_MAX_FILE_MB`, `OCR_MAX_PAGES`); a page gets 120 seconds (`OCR_PAGE_TIMEOUT_SECONDS`).
 - A finished job's result and page images are kept for 3600 seconds by default (`OCR_JOB_TTL_SECONDS`), then deleted; at most 20 jobs are held at once (`OCR_MAX_JOBS`).
+- A job drops its PDF when it ends, unless a page is marked `needs_vision` (no usable text layer, and Tesseract failed or scored under `OCR_LOW_CONFIDENCE`): then it keeps the PDF in memory until it expires, so that page can be read with a vision model (`POST /v1/jobs/{id}/pages/{n}/vision`). These PDFs take at most `OCR_MAX_FILE_MB` x `OCR_MAX_JOBS` (1000 MB by default).
 - Neither `text_layer` nor `tesseract` recovers Markdown tables (Table F1 0 in the benchmark). The vision method recovers tables (Table F1 0.682 with `qwen2.5vl:7b`) but takes about 30 seconds a page on local hardware.
 - There is no auth. Put an auth proxy in front before you expose it to a network you do not trust.
 - The web page's copy button needs `localhost` or HTTPS, as the browser allows the clipboard only there.

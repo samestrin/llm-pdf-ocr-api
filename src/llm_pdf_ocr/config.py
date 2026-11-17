@@ -14,6 +14,7 @@ DEFAULT_CONCURRENCY = 2
 DEFAULT_MAX_FILE_MB = 50
 DEFAULT_MAX_PAGES = 500
 DEFAULT_PAGE_TIMEOUT = 120.0
+DEFAULT_LOW_CONFIDENCE = 0.6
 DEFAULT_JOB_TTL = 3600.0
 DEFAULT_MAX_JOBS = 20
 DEFAULT_MAX_IMAGE_MB = 200
@@ -33,11 +34,13 @@ class ModelNotAllowedError(ValueError):
 
 @dataclass(frozen=True)
 class Limits:
-    """What one request may ask for: upload bytes, pages selected, seconds per OCR page."""
+    """What one request may ask for: upload bytes, pages selected, seconds per OCR page; and
+    the Tesseract confidence under which a page with no usable text layer needs vision."""
 
     max_file_bytes: int = DEFAULT_MAX_FILE_MB * _MiB
     max_pages: int = DEFAULT_MAX_PAGES
     page_timeout: float = DEFAULT_PAGE_TIMEOUT
+    low_confidence: float = DEFAULT_LOW_CONFIDENCE
 
 
 @dataclass(frozen=True)
@@ -100,13 +103,19 @@ def _flag(env: Mapping[str, str], name: str) -> bool:
 
 
 def load_limits(env: Mapping[str, str] | None = None) -> Limits:
-    """Read OCR_MAX_FILE_MB, OCR_MAX_PAGES and OCR_PAGE_TIMEOUT_SECONDS."""
+    """Read OCR_MAX_FILE_MB, OCR_MAX_PAGES, OCR_PAGE_TIMEOUT_SECONDS and OCR_LOW_CONFIDENCE."""
     env = os.environ if env is None else env
     max_file_mb = _number(env, "OCR_MAX_FILE_MB", DEFAULT_MAX_FILE_MB, float)
+    low_confidence = _number(env, "OCR_LOW_CONFIDENCE", DEFAULT_LOW_CONFIDENCE, float)
+    if not 0 < low_confidence <= 1:  # also refuses nan, which every comparison fails
+        raise ConfigError(
+            f"OCR_LOW_CONFIDENCE must be over 0 and at most 1, got {low_confidence:g}"
+        )
     return Limits(
         max_file_bytes=int(max_file_mb * _MiB),
         max_pages=_number(env, "OCR_MAX_PAGES", DEFAULT_MAX_PAGES, int),
         page_timeout=_number(env, "OCR_PAGE_TIMEOUT_SECONDS", DEFAULT_PAGE_TIMEOUT, float),
+        low_confidence=low_confidence,
     )
 
 

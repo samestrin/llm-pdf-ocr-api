@@ -11,6 +11,10 @@ read by Tesseract instead, and then its `fallback` names the model and the reaso
 
 With `method=auto` a page uses its text layer when usable, else the vision model if
 one is configured, else Tesseract. A caller may force any one method instead.
+
+A page `auto` read with Tesseract because it has no usable text layer, where Tesseract
+failed or scored under `low_confidence` (`OCR_LOW_CONFIDENCE`), is marked `needs_vision`
+with the reason, so a caller can have it read again with a vision model.
 """
 
 import json
@@ -23,7 +27,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, computed_field
 
 from llm_pdf_ocr import vision as vision_model
-from llm_pdf_ocr.config import VisionConfig
+from llm_pdf_ocr.config import DEFAULT_LOW_CONFIDENCE, VisionConfig
 from llm_pdf_ocr.ocr import (
     DEFAULT_LANGUAGE,
     TIMEOUT_SECONDS,
@@ -112,6 +116,8 @@ class Page(BaseModel):
     A failed page has an `error` and empty `text`; an ok page has no `error`.
     `confidence` (0 to 1) is only set for Tesseract, `model` only for `vision`.
     `fallback` is set when the vision model failed and Tesseract read the page instead.
+    `needs_vision` is set, with `needs_vision_reason`, when the page has no usable text
+    layer and Tesseract failed on it or scored it under the low-confidence threshold.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -124,6 +130,8 @@ class Page(BaseModel):
     confidence: float | None = None
     error: PageError | None = None
     fallback: Fallback | None = None
+    needs_vision: bool = False
+    needs_vision_reason: str | None = None
 
 
 class Document(BaseModel):
@@ -142,6 +150,11 @@ class Document(BaseModel):
     @property
     def failed_pages(self) -> list[int]:
         return [p.number for p in self.pages if p.status == "failed"]
+
+    @property
+    def needs_vision(self) -> bool:
+        """Whether any page is marked `needs_vision`."""
+        return any(p.needs_vision for p in self.pages)
 
 
 class Progress(Protocol):
@@ -201,12 +214,14 @@ def extract_pdf(
     max_pages: int | None = None,
     page_timeout: float = TIMEOUT_SECONDS,
     progress: Progress | None = None,
+    low_confidence: float = DEFAULT_LOW_CONFIDENCE,
 ) -> Document:
     """Read every page, or only those in the range `pages` (such as `1-3,5`), with
     `method`. `vision` is the operator's vision backend; without one, `auto` is the
     text layer where usable and Tesseract otherwise. Tesseract gets `page_timeout`
     seconds per page. `progress`, if given, is told the pages selected and then
-    each page as it is read.
+    each page as it is read. A page `auto` gives Tesseract for want of a text layer is
+    marked `needs_vision` when Tesseract fails or scores under `low_confidence`.
 
     Before any page is read, a `model` the operator does not allow raises
     `ModelNotAllowedError` (with no backend, every model is refused), forcing
@@ -230,7 +245,9 @@ def extract_pdf(
         results: dict[int, Page] = {}
         for_vision = []
         for n in numbers:
-            page = _route_page(doc[n - 1], method, vision.enabled, language, page_timeout)
+            page = _route_page(
+                doc[n - 1], method, vision.enabled, language, page_timeout, low_confidence
+            )
             if page is None:
                 for_vision.append(n)
             else:
@@ -270,7 +287,7 @@ def _select(doc, pages: str | None, max_pages: int | None) -> Sequence[int]:
 def render_json(doc: Document) -> str:
     """The document as JSON: `page_count`, `failed_pages` and one entry per page."""
     payload = doc.model_dump(mode="json")
-    payload["pages"] = [_json_page(p) for p in payload["pages"]]
+    payload["pages"] = [page_json(p) for p in doc.pages]
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
@@ -295,13 +312,17 @@ def render_markdown(doc: Document) -> str:
                 "",
                 f"> **Page {page.number} failed** ({page.error.code}): {page.error.message}",
             ]
-        elif page.text:
+        if page.needs_vision:
+            lines += ["", f"> Needs a vision model: {page.needs_vision_reason}"]
+        if page.error is None and page.text:
             lines += ["", page.text]
         sections.append("\n".join(lines))
     return "\n\n".join(sections) + "\n"
 
 
-def _json_page(page: dict) -> dict:
+def page_json(page: Page) -> dict:
+    """One page as it appears in the JSON document."""
+    page = page.model_dump(mode="json")
     return {
         "page": page["number"],
         "status": page["status"],
@@ -311,11 +332,18 @@ def _json_page(page: dict) -> dict:
         "confidence": page["confidence"],
         "error": page["error"],
         "fallback": page["fallback"],
+        "needs_vision": page["needs_vision"],
+        "needs_vision_reason": page["needs_vision_reason"],
     }
 
 
 def _route_page(
-    page, method: MethodChoice, vision_enabled: bool, language: str, timeout: float
+    page,
+    method: MethodChoice,
+    vision_enabled: bool,
+    language: str,
+    timeout: float,
+    low_confidence: float = DEFAULT_LOW_CONFIDENCE,
 ) -> Page | None:
     """Read one page by any method but vision; None means it goes to the vision model."""
     if method is MethodChoice.VISION:
@@ -340,7 +368,19 @@ def _route_page(
         )
     if vision_enabled:
         return None
-    return _ocr(page, language, timeout)
+    return _mark_needs_vision(_ocr(page, language, timeout), low_confidence)
+
+
+def _mark_needs_vision(page: Page, low_confidence: float) -> Page:
+    """Mark a page Tesseract read for want of a text layer, if it failed or scored low."""
+    reason = "the page has no usable text layer and "
+    if page.status == "failed":
+        reason += "Tesseract could not read it"
+    elif page.confidence is not None and page.confidence < low_confidence:
+        reason += f"Tesseract's confidence was {page.confidence:.2f}, under {low_confidence:g}"
+    else:
+        return page
+    return page.model_copy(update={"needs_vision": True, "needs_vision_reason": reason})
 
 
 def _ocr(page, language: str, timeout: float) -> Page:

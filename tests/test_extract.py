@@ -62,6 +62,8 @@ JSON_SCHEMA = {
                     "confidence",
                     "error",
                     "fallback",
+                    "needs_vision",
+                    "needs_vision_reason",
                 ],
                 "properties": {
                     "page": {"type": "integer", "minimum": 1},
@@ -71,6 +73,8 @@ JSON_SCHEMA = {
                     "text": {"type": "string"},
                     "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
                     "error": {"oneOf": [{"type": "null"}, ERROR_SCHEMA]},
+                    "needs_vision": {"type": "boolean"},
+                    "needs_vision_reason": {"type": ["string", "null"], "minLength": 1},
                     "fallback": {
                         "oneOf": [
                             {"type": "null"},
