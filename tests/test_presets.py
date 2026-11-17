@@ -151,6 +151,16 @@ def test_a_gateway_that_is_not_an_http_url_is_a_config_error(value):
     assert value not in str(info.value)  # a URL may carry a user and password
 
 
+def test_a_bad_gateway_stops_the_service_at_start(monkeypatch):
+    get_public_demo_config.cache_clear()
+    monkeypatch.setenv("DEMO_GATEWAY_URL", "gateway.internal:4000")
+    try:
+        with pytest.raises(ConfigError, match="DEMO_GATEWAY_URL"), TestClient(app):
+            pass
+    finally:
+        get_public_demo_config.cache_clear()
+
+
 # --- request_vision_config ------------------------------------------------------------
 
 
