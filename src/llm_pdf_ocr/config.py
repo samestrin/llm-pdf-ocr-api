@@ -1,11 +1,13 @@
-"""Settings read from the environment: request limits, jobs, the web page and the vision backend.
+"""Settings read from the environment: request limits, jobs, the web page, the vision backend
+and the public demo.
 
-The backend is off unless OCR_LLM_BASE_URL is set. Nothing here contacts the network.
+The backend is off unless OCR_LLM_BASE_URL is set, and demo codes are off unless
+DEMO_GATEWAY_URL is set. Nothing here contacts the network.
 """
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_CONCURRENCY = 2
@@ -51,7 +53,7 @@ class JobSettings:
 @dataclass(frozen=True)
 class VisionConfig:
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: str | None = field(default=None, repr=False)  # never in a log line or error
     default_model: str | None = None
     allowed_models: tuple[str, ...] = ()
     timeout: float = DEFAULT_TIMEOUT
@@ -117,6 +119,35 @@ def load_job_settings(env: Mapping[str, str] | None = None) -> JobSettings:
         max_jobs=_number(env, "OCR_MAX_JOBS", DEFAULT_MAX_JOBS, int),
         max_image_bytes=int(max_image_mb * _MiB),
     )
+
+
+@dataclass(frozen=True)
+class PublicDemoConfig:
+    """The demo-code gateway and the notice shown on the page of a public demo.
+
+    `gateway_url` is an internal address: it is used for a request with a demo code and
+    never returned to a caller.
+    """
+
+    gateway_url: str | None = None
+    notice: str | None = None
+
+    @property
+    def demo_available(self) -> bool:
+        return self.gateway_url is not None
+
+
+def load_public_demo_config(env: Mapping[str, str] | None = None) -> PublicDemoConfig:
+    """Read DEMO_GATEWAY_URL and PUBLIC_DEMO_NOTICE."""
+    env = os.environ if env is None else env
+    gateway = _get(env, "DEMO_GATEWAY_URL")
+    if gateway is not None:
+        scheme, _, rest = gateway.partition("://")
+        if scheme.lower() not in ("http", "https") or not rest.strip("/"):
+            # The value is not repeated: an internal URL may carry a user and password.
+            raise ConfigError("DEMO_GATEWAY_URL must be an http or https URL")
+        gateway = gateway.rstrip("/")
+    return PublicDemoConfig(gateway_url=gateway, notice=_get(env, "PUBLIC_DEMO_NOTICE"))
 
 
 def load_web_page(env: Mapping[str, str] | None = None) -> bool:

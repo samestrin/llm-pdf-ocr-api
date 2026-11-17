@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from llm_pdf_ocr import __version__
-from llm_pdf_ocr.app import _duration, app, get_vision_config
-from llm_pdf_ocr.config import VisionConfig, load_limits
+from llm_pdf_ocr.app import _duration, app, get_public_demo_config, get_vision_config
+from llm_pdf_ocr.config import PublicDemoConfig, VisionConfig, load_limits
 
 client = TestClient(app)
 
@@ -89,11 +89,28 @@ def test_missing_asset_is_404():
     assert client.get("/static/nope.js").status_code == 404
 
 
+# Every preset by id, label and vision model: never a base URL.
+PRESETS = [
+    {"id": "openai", "label": "OpenAI", "vision_model": "gpt-5-nano"},
+    {"id": "openrouter", "label": "OpenRouter", "vision_model": "qwen/qwen3.7-flash"},
+    {"id": "synthetic", "label": "Synthetic", "vision_model": "syn:small:vision"},
+    {"id": "alibaba", "label": "Alibaba (DashScope intl)", "vision_model": "qwen-vl-plus"},
+    {"id": "demo", "label": "Demo code", "vision_model": "demo-vision"},
+]
+
+
 def test_capabilities_without_vision():
     response = client.get("/v1/capabilities")
 
     assert response.status_code == 200
-    assert response.json() == {"methods": ["auto", "text_layer", "tesseract"], "models": []}
+    assert response.json() == {
+        "methods": ["auto", "text_layer", "tesseract"],
+        "models": [],
+        "presets": PRESETS,
+        "demo_available": False,
+        "notice": None,
+    }
+    assert '"vision"' not in response.text  # as the Docker job in CI checks
 
 
 def test_capabilities_with_vision_lists_only_method_and_model_names():
@@ -112,9 +129,33 @@ def test_capabilities_with_vision_lists_only_method_and_model_names():
     assert response.json() == {
         "methods": ["auto", "text_layer", "tesseract", "vision"],
         "models": ["qwen2.5vl", "llava"],
+        "presets": PRESETS,
+        "demo_available": False,
+        "notice": None,
     }
     assert secret_key not in response.text
     assert "llm.internal.example" not in response.text
+    assert "http" not in response.text
+
+
+def test_capabilities_with_a_demo_gateway_and_notice_show_neither_url():
+    gateway = "http://gateway.internal:4000/v1"
+    notice = "Public demo: do not upload private files. Uploads are deleted after 10 minutes."
+    app.dependency_overrides[get_public_demo_config] = lambda: PublicDemoConfig(
+        gateway_url=gateway, notice=notice
+    )
+
+    response = client.get("/v1/capabilities")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "methods": ["auto", "text_layer", "tesseract"],
+        "models": [],
+        "presets": PRESETS,
+        "demo_available": True,
+        "notice": notice,
+    }
+    assert "gateway.internal" not in response.text
     assert "http" not in response.text
 
 

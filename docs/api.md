@@ -50,7 +50,19 @@ The page for using the service from a browser, with its files under `/static/` (
 
 **Endpoint:** `/v1/capabilities` **Method:** GET
 
-Returns the methods a request may use and the vision models it may pick, for example `{"methods": ["auto", "text_layer", "tesseract"], "models": []}`. `vision` and the `OCR_LLM_ALLOWED_MODELS` names appear only when a vision model is configured. The endpoint URL and key are never returned.
+Returns the methods a request may use, the vision models it may pick, the model presets, whether demo codes work here and the public notice, for example:
+
+```json
+{
+  "methods": ["auto", "text_layer", "tesseract"],
+  "models": [],
+  "presets": [{"id": "openai", "label": "OpenAI", "vision_model": "gpt-5-nano"}, "..."],
+  "demo_available": false,
+  "notice": null
+}
+```
+
+`vision` and the `OCR_LLM_ALLOWED_MODELS` names appear only when a vision model is configured. `presets` lists every provider in `src/llm_pdf_ocr/presets.json` by id, label and vision model; `demo_available` is true only when `DEMO_GATEWAY_URL` is set, and `notice` is `PUBLIC_DEMO_NOTICE` (or `null`). No endpoint URL or key is ever returned: not the vision backend's, not a preset's and not the demo gateway's.
 
 ## OCR (deprecated)
 

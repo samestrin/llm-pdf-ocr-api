@@ -1,6 +1,7 @@
-"""The spec at `/openapi.json` describes the bodies `POST /v1/extract` and `GET /v1/jobs/{id}`
-really return: each live response below, read from a fixture PDF, is checked against the
-schema the spec gives for it, and the schema names exactly the keys the response has.
+"""The spec at `/openapi.json` describes the bodies `POST /v1/extract`, `GET /v1/jobs/{id}` and
+`GET /v1/capabilities` really return: each live response below, read from a fixture PDF, is
+checked against the schema the spec gives for it, and the schema names exactly the keys the
+response has.
 """
 
 from pathlib import Path
@@ -188,3 +189,18 @@ def test_an_unknown_job_matches_its_error_schema():
     assert response.status_code == 404
 
     check(response.json(), schema("/v1/jobs/{job_id}", "get", 404, "application/json"))
+
+
+# GET /v1/capabilities
+
+
+def test_capabilities_match_their_schema():
+    body = client.get("/v1/capabilities").json()
+    found = schema("/v1/capabilities", "get", 200, "application/json")
+
+    check(body, found)
+    capabilities = resolve(found)
+    assert set(capabilities["properties"]) == set(body)
+    assert set(capabilities["required"]) == set(body)
+    preset = resolve(capabilities["properties"]["presets"]["items"])
+    assert set(preset["properties"]) == set(body["presets"][0]) == {"id", "label", "vision_model"}
