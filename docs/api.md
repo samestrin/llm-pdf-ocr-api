@@ -52,7 +52,7 @@ The model comes from the request's credentials, used for this request only and n
 
 | Header | Send it with | Meaning |
 |---|---|---|
-| `X-Model-Preset` | `X-Model-Key`, or alone for `demo` | A preset id from `GET /v1/capabilities`; the preset fixes the provider and model. |
+| `X-Model-Preset` | with `X-Model-Key`, or with `X-Demo-Code` for `demo` | A preset id from `GET /v1/capabilities`; the preset fixes the provider and model. The `demo` preset takes a demo code, not a key. |
 | `X-Model-Key` | `X-Model-Preset` | The visitor's key for that provider, for this request only. |
 | `X-Demo-Code` | alone, or with `X-Model-Preset: demo` | A demo code, forwarded to the operator's demo gateway. |
 
