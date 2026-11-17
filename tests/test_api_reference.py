@@ -79,7 +79,8 @@ def test_the_openapi_paths_are_unchanged():
 
     Taken when Scalar replaced the docs pages; retaken when `/v1/extract` and `/v1/jobs/{id}`
     gained their response schemas (tests/test_openapi_responses.py), and when
-    `/v1/capabilities` gained its schema with `presets`, `demo_available` and `notice`.
+    `/v1/capabilities` gained its schema with `presets`, `demo_available` and `notice`, and
+    when `POST /v1/jobs/{id}/pages/{n}/vision` was added.
     """
     snapshot = json.loads((FIXTURES / "openapi_paths.json").read_text())
 

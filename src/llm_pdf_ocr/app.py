@@ -17,6 +17,12 @@ While a job runs it renders each selected page as a PNG, served at
 held jobs keep at most `OCR_MAX_IMAGE_MB` between them; past that a job renders
 no more, and its later pages have no image (404 `page_not_found`).
 
+A page `auto` read with Tesseract for want of a text layer, where Tesseract failed or
+scored under `OCR_LOW_CONFIDENCE`, is marked `needs_vision`. A job with such a page keeps
+its PDF until it expires (at most `OCR_MAX_FILE_MB` x `OCR_MAX_JOBS` bytes in all), so
+`POST /v1/jobs/{id}/pages/{n}/vision` can read that page with the visitor's key or demo
+code and replace its result; the PDF is dropped once no page needs vision.
+
 `GET /` is a page for using the service from a browser (files in `llm_pdf_ocr/web/`,
 served with `Content-Security-Policy: default-src 'self'`, so it loads nothing from
 another origin). The page states this service's real upload limits and how long a
@@ -29,8 +35,8 @@ methods and vision model names it may offer, the model presets a visitor may pic
 backend's URL or key.
 
 A visitor's own key or demo code arrives in request headers and is read only by the
-routes that take `RequestVision`; `/v1/extract` and `/v1/jobs` use the server's own
-vision config and ignore those headers.
+routes that take `RequestVision` (the page route above); `/v1/extract` and `/v1/jobs` use
+the server's own vision config and ignore those headers.
 
 `GET /docs` is the API reference: Scalar, vendored in `llm_pdf_ocr/web/scalar/` at a
 pinned version, reading this service's own `/openapi.json`. It loads nothing from
@@ -57,6 +63,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from llm_pdf_ocr import __version__
+from llm_pdf_ocr import vision as vision_model
 from llm_pdf_ocr.config import (
     Limits,
     ModelNotAllowedError,
@@ -73,11 +80,13 @@ from llm_pdf_ocr.extract import (
     Fallback,
     Method,
     MethodChoice,
+    Page,
     PageError,
     PageRangeError,
     TooManyPagesError,
     VisionNotConfiguredError,
     extract_pdf,
+    page_json,
     render_json,
     render_markdown,
     select_pages,
@@ -85,7 +94,14 @@ from llm_pdf_ocr.extract import (
 from llm_pdf_ocr.jobs import Job, JobStatus, JobStore, TooManyJobsError
 from llm_pdf_ocr.limits import FileTooLargeError, UploadCap, read_upload
 from llm_pdf_ocr.pdf import EncryptedPdfError, PdfReadError, open_pdf, render_page_image
-from llm_pdf_ocr.presets import CredentialsError, public_presets, request_vision_config
+from llm_pdf_ocr.presets import (
+    DEMO_CODE_HEADER,
+    KEY_HEADER,
+    PRESET_HEADER,
+    CredentialsError,
+    public_presets,
+    request_vision_config,
+)
 from llm_pdf_ocr.requestlog import RequestLog, current_request_id
 
 log = logging.getLogger(__name__)
@@ -198,6 +214,12 @@ class ExtractedPage(_Schema):
     fallback: Fallback | None = Field(
         description="The vision model that failed before Tesseract read the page, and why."
     )
+    needs_vision: bool = Field(
+        description="The page has no usable text layer and Tesseract failed on it or scored it "
+        "under `OCR_LOW_CONFIDENCE`. In a job, `POST /v1/jobs/{id}/pages/{n}/vision` reads "
+        "it with a vision model; the job keeps its PDF until it expires for that."
+    )
+    needs_vision_reason: str | None = Field(description="Why the page needs vision.")
 
 
 class ExtractedDocument(_Schema):
@@ -219,7 +241,13 @@ class JobError(_Schema):
 
 
 class JobView(_Schema):
-    """A job's progress per page, and its result once `done`."""
+    """A job's progress per page, and its result once `done`.
+
+    A job whose result has a page marked `needs_vision` keeps its PDF in memory until it
+    expires (`OCR_JOB_TTL_SECONDS`), so that page can be read with a vision model; all held
+    jobs together keep at most `OCR_MAX_FILE_MB` x `OCR_MAX_JOBS` of PDFs. Other jobs drop
+    the PDF when they end.
+    """
 
     id: str
     status: JobStatus
@@ -455,6 +483,7 @@ def extract(
         vision=vision,
         max_pages=limits.max_pages,
         page_timeout=limits.page_timeout,
+        low_confidence=limits.low_confidence,
     )
     if format is Format.JSON:
         return Response(render_json(doc), media_type="application/json")
@@ -480,6 +509,7 @@ def ocr(
         vision=vision,
         max_pages=limits.max_pages,
         page_timeout=limits.page_timeout,
+        low_confidence=limits.low_confidence,
     )
     response.headers["Deprecation"] = "true"
     return {
@@ -530,10 +560,13 @@ def create_job(
             vision=vision,
             max_pages=limits.max_pages,
             page_timeout=limits.page_timeout,
+            low_confidence=limits.low_confidence,
             progress=job,
         )
 
-    job = request.app.state.jobs.submit(data, work, format=format)
+    job = request.app.state.jobs.submit(
+        data, work, keep_data=lambda doc: doc.needs_vision, format=format
+    )
     response.headers["Location"] = f"/v1/jobs/{job.id}"
     return {"id": job.id, "status": job.status}
 
@@ -614,3 +647,111 @@ def get_page_image(request: Request, job_id: str, number: int) -> Response:
     if png is None:
         return _error("page_not_found", f"this job has no image of page {number}", 404)
     return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+# What a visitor is told when the provider could not read the page. The provider's own
+# error text is never passed on: it may echo the key.
+_PLAIN_VISION_ERRORS = {
+    "rate_limited": "the provider is limiting requests for this key; try again in a minute",
+    "timeout": "the vision model took too long to answer; try again",
+    "unreachable": "the provider could not be reached; try again later",
+    "bad_response": "the vision model sent back no text for this page",
+    "empty_response": "the vision model sent back no text for this page",
+}
+
+
+def _plain_vision_error(exc: vision_model.VisionError) -> str:
+    if exc.status in (401, 403):
+        return "the provider did not accept the key"
+    if exc.code in _PLAIN_VISION_ERRORS:
+        return _PLAIN_VISION_ERRORS[exc.code]
+    if exc.status is not None:
+        return f"the provider could not read the page (HTTP {exc.status}); try again later"
+    return "the vision model could not read the page; try again later"
+
+
+@app.post(
+    "/v1/jobs/{job_id}/pages/{number}/vision",
+    response_model=ExtractedPage,
+    responses={
+        400: _error_response(
+            "A preset this service does not offer, or a malformed key: `preset_not_allowed`, "
+            "`invalid_key`."
+        ),
+        401: _error_response(
+            f"No vision credentials: send `{PRESET_HEADER}` with `{KEY_HEADER}`, or "
+            f"`{DEMO_CODE_HEADER}`: `credentials_required`."
+        ),
+        404: _error_response(
+            "No job with this id or it has expired (`job_not_found`), or the job did not "
+            "read this page (`page_not_found`)."
+        ),
+        409: _error_response(
+            "The job is not done (`job_not_done`), the page does not need vision "
+            "(`vision_not_needed`), or it is being read already (`page_busy`)."
+        ),
+        502: _error_response("The vision provider could not read the page: `vision_failed`."),
+    },
+)
+def read_page_with_vision(
+    request: Request, job_id: str, number: int, vision: RequestVision
+) -> Response:
+    """Read one page marked `needs_vision` with a vision model, and replace its result.
+
+    The model is the preset's, used with the visitor's key (`X-Model-Preset` and
+    `X-Model-Key`) or demo code (`X-Demo-Code`) for this request only; without them,
+    the server's own vision backend if it has one. The job keeps its PDF until it expires
+    while a page needs vision; the page is rendered from it again at 150 DPI. The answer is
+    the page as it now appears in the job's result. If the provider fails, the page stays
+    marked and may be tried again.
+    """
+    job = request.app.state.jobs.get(job_id)
+    if job is None:
+        return _error("job_not_found", "no job with this id, or it has expired", 404)
+    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+        return _error("job_not_done", "the job is still reading the PDF", 409)
+    result = job.result
+    if result is None:  # the job failed, or expired since it was looked up
+        return _error("vision_not_needed", f"page {number} does not need a vision model", 409)
+    index = next((i for i, p in enumerate(result.pages) if p.number == number), None)
+    if index is None:
+        return _error("page_not_found", f"this job did not read page {number}", 404)
+    if not result.pages[index].needs_vision:
+        return _error("vision_not_needed", f"page {number} does not need a vision model", 409)
+    if not vision.enabled:
+        return _error(
+            "credentials_required",
+            f"reading a page with a vision model needs {PRESET_HEADER} and {KEY_HEADER}, "
+            f"or {DEMO_CODE_HEADER}",
+            401,
+        )
+    if not job.start_reading(number):
+        return _error("page_busy", f"page {number} is being read already", 409)
+    try:
+        data = job.data
+        if data is None:  # expired since it was looked up
+            return _error("job_not_found", "no job with this id, or it has expired", 404)
+        try:
+            with open_pdf(data) as doc:
+                png = vision_model.render_page(doc[number - 1])
+            read = vision_model.read_image(png, number, vision)
+        except vision_model.VisionError as exc:
+            return _error("vision_failed", _plain_vision_error(exc), 502)
+        except Exception as exc:  # the message stays generic
+            log.error("page %d: could not be read with vision: %s", number, type(exc).__name__)
+            return _error(
+                "vision_failed", "the vision model could not read the page; try again later", 502
+            )
+        page = Page(
+            number=number, status="ok", method=Method.VISION, model=read.model, text=read.text
+        )
+        with job.lock:
+            if job.result is None:  # expired while it was read
+                return _error("job_not_found", "no job with this id, or it has expired", 404)
+            job.result.pages[index] = page
+            job.page_done(number, "ok")
+            if not job.result.needs_vision:
+                job.drop_data()
+    finally:
+        job.stop_reading(number)
+    return JSONResponse(page_json(page))

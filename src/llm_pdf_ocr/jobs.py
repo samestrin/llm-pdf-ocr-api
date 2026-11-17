@@ -1,8 +1,10 @@
 """Jobs held in memory, for PDFs too long to read in one request.
 
 A job is `queued`, `running`, then `done` or `failed`. It holds the PDF bytes
-only until it ends; its result and page images are dropped once it has been
-finished for `ttl` seconds, and the job is forgotten. At most `max_jobs` jobs are held at once,
+only until it ends, unless `keep_data` says its result still needs them (a page that
+needs vision): then it holds them until the job expires or `drop_data` is called. Its
+result and page images are dropped once it has been finished for `ttl` seconds, and the
+job is forgotten. At most `max_jobs` jobs are held at once,
 finished ones included until they expire, and their page images together hold at
 most `max_image_bytes`: past that, a job keeps reading but renders no more images.
 Jobs run one at a time, in a thread of this process: they are only visible to the
@@ -57,7 +59,10 @@ class ImageBudget:
 
 class Job:
     """One job. `pages` maps each selected page to `pending`, `ok` or `failed`;
-    `images` maps a page to its PNG once it is rendered and fits the budget."""
+    `images` maps a page to its PNG once it is rendered and fits the budget.
+
+    `lock` guards changes to a finished job's result; `reading` holds the pages being
+    read again (see `start_reading`)."""
 
     def __init__(
         self,
@@ -77,6 +82,8 @@ class Job:
         self.error: dict[str, str] | None = None
         self.finished_at: float | None = None
         self.finished = threading.Event()
+        self.lock = threading.Lock()
+        self.reading: set[int] = set()
         self._budget = ImageBudget(None) if budget is None else budget
 
     def selected(self, numbers: Sequence[int]) -> None:
@@ -94,6 +101,22 @@ class Job:
             return False
         self.images[number] = png
         return True
+
+    def start_reading(self, number: int) -> bool:
+        """Claim one page to read again; False if it is already being read."""
+        with self.lock:
+            if number in self.reading:
+                return False
+            self.reading.add(number)
+            return True
+
+    def stop_reading(self, number: int) -> None:
+        with self.lock:
+            self.reading.discard(number)
+
+    def drop_data(self) -> None:
+        """Let go of the PDF bytes."""
+        self.data = None
 
     def drop_images(self) -> None:
         """Drop the page images and give their bytes back to the budget."""
@@ -128,10 +151,17 @@ class JobStore:
             self._expire()
             return len(self._jobs)
 
-    def submit(self, data: bytes, work: Work, **options: Any) -> Job:
+    def submit(
+        self,
+        data: bytes,
+        work: Work,
+        keep_data: Callable[[Any], bool] | None = None,
+        **options: Any,
+    ) -> Job:
         """Hold a new job for `data` and queue `work(data, job)`; its return is the result.
 
-        Raises `TooManyJobsError` when `max_jobs` jobs are already held.
+        If `keep_data(result)` is true once the work is done, the job keeps `data` until it
+        expires. Raises `TooManyJobsError` when `max_jobs` jobs are already held.
         """
         with self._lock:
             self._expire()
@@ -139,7 +169,7 @@ class JobStore:
                 raise TooManyJobsError(f"{self.max_jobs} jobs are held already; try again later")
             job = Job(secrets.token_urlsafe(), data, options, self._images)
             self._jobs[job.id] = job
-        self._executor.submit(self._run, job, work)
+        self._executor.submit(self._run, job, work, keep_data)
         return job
 
     def get(self, job_id: str) -> Job | None:
@@ -152,11 +182,13 @@ class JobStore:
         """Stop running jobs: the one running finishes, queued ones are dropped."""
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def _run(self, job: Job, work: Work) -> None:
+    def _run(self, job: Job, work: Work, keep_data: Callable[[Any], bool] | None) -> None:
         data, job.data = job.data, None  # nothing but this call holds the bytes now
         job.status = JobStatus.RUNNING
         try:
             job.result = work(data, job)
+            if keep_data is not None and keep_data(job.result):
+                job.data = data  # held until the job expires, for its pages that need vision
             job.status = JobStatus.DONE
         except Exception as exc:  # the message stays generic: no detail of the failure leaves
             log.error("a job failed: %s", type(exc).__name__)
@@ -171,7 +203,9 @@ class JobStore:
         now = self._clock()
         for job_id, job in list(self._jobs.items()):
             if job.finished_at is not None and now - job.finished_at >= self.ttl:
-                job.result = None
-                job.error = None
+                with job.lock:
+                    job.result = None
+                    job.error = None
+                    job.drop_data()
                 job.drop_images()
                 del self._jobs[job_id]

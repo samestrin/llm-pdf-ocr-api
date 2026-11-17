@@ -4,7 +4,7 @@ A page with no usable text layer that Tesseract failed on, or read with a confid
 `OCR_LOW_CONFIDENCE`, is marked `needs_vision` with the reason. Its job keeps the PDF until
 it expires, so the page can be read again with a vision model using the visitor's own key or
 demo code, and the result for that page is replaced. Tests use the bundled scanned fixture
-(page 1 is only an image, page 2 has a text layer) and a fake OpenAI-compatible provider.
+(two scanned pages, neither with a usable text layer) and a fake OpenAI-compatible provider.
 """
 
 import base64
@@ -20,18 +20,26 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 from test_extract import JSON_SCHEMA
+from test_openapi_responses import check, resolve, schema
 from test_presets import FAKE_KEY, fake_provider  # noqa: F401  (fixture)
-from test_vision import completion
+from test_vision import MODEL, completion
 
 from llm_pdf_ocr import extract, vision
 from llm_pdf_ocr.app import app
 from llm_pdf_ocr.config import DEFAULT_LOW_CONFIDENCE, ConfigError, load_limits
-from llm_pdf_ocr.extract import ErrorCode, Method, extract_pdf, render_json, render_markdown
+from llm_pdf_ocr.extract import (
+    ErrorCode,
+    Method,
+    MethodChoice,
+    extract_pdf,
+    render_json,
+    render_markdown,
+)
 from llm_pdf_ocr.jobs import JobStatus, JobStore
 from llm_pdf_ocr.ocr import OcrError, OcrResult
 
 SCANNED = (Path(__file__).parent / "fixtures" / "scanned.pdf").read_bytes()
-SCAN, TEXT = 1, 2
+SCAN, READ_WELL = 1, 2  # with `scores` below: Tesseract scores page 1 low and page 2 well
 KEY = {"X-Model-Preset": "openai", "X-Model-Key": FAKE_KEY}
 WAIT = 5
 
@@ -42,13 +50,17 @@ needs_tesseract = pytest.mark.skipif(
 )
 
 
-def tesseract_scores(monkeypatch, confidence: float | None) -> None:
-    """A fake Tesseract that reads every page with `confidence`, or fails when it is None."""
+def tesseract_scores(monkeypatch, confidence: float | dict[int, float] | None) -> None:
+    """A fake Tesseract that reads every page with `confidence` (or, from a dict, each page
+    with its own), or fails when it is None."""
 
     def ocr(page, language="eng", timeout=None):
-        if confidence is None:
+        score = confidence
+        if isinstance(confidence, dict):
+            score = confidence[page.number + 1]
+        if score is None:
             raise OcrError("tesseract failed")
-        return OcrResult(number=page.number + 1, text="faint words", confidence=confidence)
+        return OcrResult(number=page.number + 1, text="faint words", confidence=score)
 
     monkeypatch.setattr(extract, "ocr_page", ocr)
 
@@ -69,7 +81,7 @@ def test_a_low_confidence_outside_0_to_1_is_a_config_error(value):
 
 
 def test_a_scanned_page_tesseract_scored_low_is_marked_with_the_reason(monkeypatch):
-    tesseract_scores(monkeypatch, 0.42)
+    tesseract_scores(monkeypatch, {SCAN: 0.42, READ_WELL: 0.9})
 
     doc = extract_pdf(SCANNED)
 
@@ -80,7 +92,7 @@ def test_a_scanned_page_tesseract_scored_low_is_marked_with_the_reason(monkeypat
         "the page has no usable text layer and Tesseract's confidence was 0.42, under 0.6"
     )
     assert (text.method, text.needs_vision, text.needs_vision_reason) == (
-        Method.TEXT_LAYER,
+        Method.TESSERACT,
         False,
         None,
     )
@@ -120,7 +132,8 @@ def test_a_page_read_by_forced_tesseract_or_text_layer_is_not_marked(monkeypatch
     tesseract_scores(monkeypatch, 0.1)
 
     forced = [
-        extract_pdf(SCANNED, pages="1", method=m).pages[0] for m in ("tesseract", "text_layer")
+        extract_pdf(SCANNED, pages="1", method=m).pages[0]
+        for m in (MethodChoice.TESSERACT, MethodChoice.TEXT_LAYER)
     ]
 
     assert [p.needs_vision for p in forced] == [False, False]
@@ -135,7 +148,7 @@ def test_the_real_scanned_fixture_is_marked_under_a_strict_threshold():
 
 
 def test_the_mark_is_in_the_json_and_the_markdown(monkeypatch):
-    tesseract_scores(monkeypatch, 0.42)
+    tesseract_scores(monkeypatch, {SCAN: 0.42, READ_WELL: 0.9})
     doc = extract_pdf(SCANNED)
 
     payload = json.loads(render_json(doc))
@@ -219,8 +232,8 @@ def read_with_vision(job_id: str, number: int = SCAN, headers=KEY):
 
 @pytest.fixture
 def marked(monkeypatch, store):
-    """A finished JSON job on the scanned fixture whose page 1 needs vision."""
-    tesseract_scores(monkeypatch, 0.42)
+    """A finished JSON job on the scanned fixture whose page 1 needs vision and page 2 not."""
+    tesseract_scores(monkeypatch, {SCAN: 0.42, READ_WELL: 0.9})
     return job_for(store, format="json")
 
 
@@ -240,7 +253,7 @@ def test_the_route_reads_the_page_and_replaces_its_result(
         "page": SCAN,
         "status": "ok",
         "method": "vision",
-        "model": "gpt-5-nano",
+        "model": MODEL,  # as the provider names it
         "text": "# Page",
         "confidence": None,
         "error": None,
@@ -253,13 +266,13 @@ def test_the_route_reads_the_page_and_replaces_its_result(
     url = body["messages"][0]["content"][1]["image_url"]["url"]
     png = base64.b64decode(url.removeprefix("data:image/png;base64,"))
     with pymupdf.open(stream=SCANNED, filetype="pdf") as doc:
-        rect = doc[SCAN - 1].rect
+        at_150 = doc[SCAN - 1].get_pixmap(dpi=150)
     assert vision.RENDER_DPI == 150
-    assert png_size(png) == (round(rect.width * 150 / 72), round(rect.height * 150 / 72))
+    assert png_size(png) == (at_150.width, at_150.height)
 
     job = client.get(f"/v1/jobs/{marked}").json()
     assert job["result"]["pages"][0] == response.json()
-    assert job["result"]["pages"][1]["method"] == "text_layer"
+    assert job["result"]["pages"][1]["method"] == "tesseract"
     assert job["result"]["failed_pages"] == []
     assert store.get(marked).data is None  # no page needs vision now: the PDF is dropped
     assert FAKE_KEY not in str(job)
@@ -270,7 +283,7 @@ def test_a_failed_page_read_with_vision_is_ok_in_the_job_progress(
     store,
     fake_provider,  # noqa: F811
 ):
-    tesseract_scores(monkeypatch, None)
+    tesseract_scores(monkeypatch, {SCAN: None, READ_WELL: 0.9})
     job_id = job_for(store, format="json")
     assert client.get(f"/v1/jobs/{job_id}").json()["result"]["failed_pages"] == [SCAN]
 
@@ -286,14 +299,14 @@ def test_a_markdown_job_shows_the_page_read_with_vision(
     store,
     fake_provider,  # noqa: F811
 ):
-    tesseract_scores(monkeypatch, 0.42)
+    tesseract_scores(monkeypatch, {SCAN: 0.42, READ_WELL: 0.9})
     job_id = job_for(store)
 
     assert "Needs a vision model" in client.get(f"/v1/jobs/{job_id}").json()["result"]
     read_with_vision(job_id)
 
     result = client.get(f"/v1/jobs/{job_id}").json()["result"]
-    assert "Method: vision · Model: gpt-5-nano" in result
+    assert f"Method: vision · Model: {MODEL}" in result
     assert "Needs a vision model" not in result
 
 
@@ -306,7 +319,7 @@ def test_without_credentials_the_route_is_401_credentials_required(marked, store
 
 
 def test_a_page_that_does_not_need_vision_is_refused(marked, fake_provider):  # noqa: F811
-    response = read_with_vision(marked, number=TEXT)
+    response = read_with_vision(marked, number=READ_WELL)
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "vision_not_needed"
@@ -451,3 +464,75 @@ def test_an_unreachable_provider_maps_to_plain_wording(marked, monkeypatch):
     assert (
         response.json()["error"]["message"] == "the provider could not be reached; try again later"
     )
+
+
+# --- the spec describes what the route returns ----------------------------------------
+
+ROUTE = "/v1/jobs/{job_id}/pages/{number}/vision"
+
+
+def test_the_page_from_the_route_and_a_marked_job_match_their_schemas(
+    marked,
+    fake_provider,  # noqa: F811
+):
+    before = client.get(f"/v1/jobs/{marked}").json()
+    check(before, schema("/v1/jobs/{job_id}", "get", 200, "application/json"))
+    assert before["result"]["pages"][0]["needs_vision"] is True
+
+    page = read_with_vision(marked).json()
+    found = schema(ROUTE, "post", 200, "application/json")
+    check(page, found)
+    assert set(resolve(found)["properties"]) == set(page)
+    assert set(resolve(found)["required"]) == set(page)
+
+
+@pytest.mark.parametrize(
+    ("status", "headers", "number"),
+    [
+        (400, {"X-Model-Preset": "nope", "X-Model-Key": FAKE_KEY}, SCAN),
+        (401, {}, SCAN),
+        (404, KEY, 9),
+        (409, KEY, READ_WELL),
+    ],
+)
+def test_the_errors_from_the_route_match_their_schema(marked, status, headers, number):
+    response = read_with_vision(marked, number=number, headers=headers)
+
+    assert response.status_code == status
+    check(response.json(), schema(ROUTE, "post", status, "application/json"))
+
+
+def test_a_provider_error_matches_its_schema(marked, fake_provider):  # noqa: F811
+    fake_provider.reply = lambda body: (500, {})
+    response = read_with_vision(marked)
+
+    assert response.status_code == 502
+    check(response.json(), schema(ROUTE, "post", 502, "application/json"))
+
+
+def test_a_failed_job_has_no_page_to_read(store):
+    job = store.submit(SCANNED, lambda data, job: 1 / 0, format="json")
+    assert job.finished.wait(WAIT)
+
+    response = read_with_vision(job.id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "vision_not_needed"
+
+
+def test_an_unexpected_error_while_reading_is_a_plain_502(marked, monkeypatch, caplog):
+    def broken(*args, **kwargs):
+        raise RuntimeError(f"internal detail {FAKE_KEY}")
+
+    monkeypatch.setattr(vision, "read_image", broken)
+
+    response = read_with_vision(marked)
+
+    assert response.status_code == 502
+    assert response.json()["error"] == {
+        "code": "vision_failed",
+        "message": "the vision model could not read the page; try again later",
+        "request_id": response.headers["x-request-id"],
+    }
+    assert FAKE_KEY not in caplog.text
+    assert read_with_vision(marked).status_code == 502  # the page was let go: not page_busy

@@ -294,5 +294,104 @@
       },
       "summary": "Get Page Image"
     }
+  },
+  "/v1/jobs/{job_id}/pages/{number}/vision": {
+    "post": {
+      "description": "Read one page marked `needs_vision` with a vision model, and replace its result.\n\nThe model is the preset's, used with the visitor's key (`X-Model-Preset` and\n`X-Model-Key`) or demo code (`X-Demo-Code`) for this request only; without them,\nthe server's own vision backend if it has one. The job keeps its PDF until it expires\nwhile a page needs vision; the page is rendered from it again at 150 DPI. The answer is\nthe page as it now appears in the job's result. If the provider fails, the page stays\nmarked and may be tried again.",
+      "operationId": "read_page_with_vision_v1_jobs__job_id__pages__number__vision_post",
+      "parameters": [
+        {
+          "in": "path",
+          "name": "job_id",
+          "required": true,
+          "schema": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "number",
+          "required": true,
+          "schema": {
+            "title": "Number",
+            "type": "integer"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractedPage"
+              }
+            }
+          },
+          "description": "Successful Response"
+        },
+        "400": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "A preset this service does not offer, or a malformed key: `preset_not_allowed`, `invalid_key`."
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "No vision credentials: send `X-Model-Preset` with `X-Model-Key`, or `X-Demo-Code`: `credentials_required`."
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "No job with this id or it has expired (`job_not_found`), or the job did not read this page (`page_not_found`)."
+        },
+        "409": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "The job is not done (`job_not_done`), the page does not need vision (`vision_not_needed`), or it is being read already (`page_busy`)."
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          },
+          "description": "Validation Error"
+        },
+        "502": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "The vision provider could not read the page: `vision_failed`."
+        }
+      },
+      "summary": "Read Page With Vision"
+    }
   }
 }
