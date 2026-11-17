@@ -1308,8 +1308,8 @@ def _vision_route(page, answer) -> list:
 def _stored(page) -> dict:
     return page.evaluate(
         """() => ({
-          session: sessionStorage.getItem("vision-key"),
-          local: localStorage.getItem("vision-key"),
+          session: sessionStorage.getItem("vision-keys"),
+          local: localStorage.getItem("vision-keys"),
         })"""
     )
 
@@ -1384,7 +1384,7 @@ def test_the_key_is_kept_in_session_storage_by_default(live_server, page):
 
     stored = _stored(page)
     assert stored["local"] is None
-    assert json.loads(stored["session"]) == {"preset": "openrouter", "key": KEY}
+    assert json.loads(stored["session"]) == {"preset": "openrouter", "keys": {"openrouter": KEY}}
     assert page.locator("#key-input").get_attribute("type") == "password"
 
     page.reload()  # the same tab keeps it
@@ -1402,7 +1402,7 @@ def test_remember_on_this_device_moves_the_key_to_local_storage(live_server, pag
 
     stored = _stored(page)
     assert stored["session"] is None
-    assert json.loads(stored["local"]) == {"preset": "openai", "key": KEY}
+    assert json.loads(stored["local"]) == {"preset": "openai", "keys": {"openai": KEY}}
 
     page.evaluate("sessionStorage.clear()")  # as a new tab would start
     page.reload()
@@ -1413,7 +1413,61 @@ def test_remember_on_this_device_moves_the_key_to_local_storage(live_server, pag
     page.uncheck("#key-remember")
     stored = _stored(page)
     assert stored["local"] is None
-    assert json.loads(stored["session"])["key"] == KEY
+    assert json.loads(stored["session"])["keys"] == {"openai": KEY}
+
+
+def test_each_provider_keeps_its_own_key_and_never_gets_another(live_server, page, fresh_jobs):
+    _marked_result(page, live_server, demo_available=True)
+    reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
+    page.locator("#key-panel summary").click()
+    page.select_option("#key-preset", "openai")
+    page.fill("#key-input", KEY)
+
+    # Switching provider empties the field: the OpenAI key is not offered to the demo.
+    page.select_option("#key-preset", "demo")
+    expect(page.locator("#key-input")).to_have_value("")
+    page.click(".read-vision")
+    expect(page.locator("#key-input")).to_be_focused()
+    assert reads == []
+    assert json.loads(_stored(page)["session"]) == {"preset": "demo", "keys": {"openai": KEY}}
+
+    page.fill("#key-input", DEMO_CODE)
+    page.select_option("#key-preset", "openrouter")
+    expect(page.locator("#key-input")).to_have_value("")
+    page.select_option("#key-preset", "openai")  # each provider's key comes back
+    expect(page.locator("#key-input")).to_have_value(KEY)
+    page.select_option("#key-preset", "demo")
+    expect(page.locator("#key-input")).to_have_value(DEMO_CODE)
+    assert json.loads(_stored(page)["session"])["keys"] == {"openai": KEY, "demo": DEMO_CODE}
+
+    page.click(".read-vision")
+    expect(page.locator(".page-result").nth(1).locator(".method")).to_have_text(
+        "Method: Vision model · Model: gpt-5-nano"
+    )
+    assert len(reads) == 1
+    headers = reads[0].all_headers()
+    assert headers["x-model-preset"] == "demo"
+    assert headers["x-demo-code"] == DEMO_CODE
+    assert "x-model-key" not in headers
+    assert all(KEY not in value for value in headers.values())
+
+
+def test_stored_keys_come_back_per_provider_after_a_reload(live_server, page):
+    _capabilities(page, demo_available=True)
+    page.goto(live_server + "/")
+    page.locator("#key-panel summary").click()
+    page.select_option("#key-preset", "openrouter")
+    page.fill("#key-input", KEY)
+    page.select_option("#key-preset", "demo")
+    page.fill("#key-input", DEMO_CODE)
+    page.select_option("#key-preset", "openrouter")
+
+    page.reload()
+    expect(page.locator("#key-preset")).to_have_value("openrouter")
+    expect(page.locator("#key-input")).to_have_value(KEY)
+    page.locator("#key-panel summary").click()
+    page.select_option("#key-preset", "demo")
+    expect(page.locator("#key-input")).to_have_value(DEMO_CODE)
 
 
 @pytest.mark.parametrize("remember", [False, True])

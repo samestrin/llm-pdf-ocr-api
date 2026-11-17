@@ -93,18 +93,20 @@ async function loadCapabilities() {
 }
 
 // The key panel: the visitor's own key, or a demo code, for reading a marked page with a
-// vision model. It stays in this browser, in sessionStorage unless "Remember on this
-// device" is ticked (then localStorage), and leaves the page only in the header of a
-// vision read: X-Model-Preset with X-Model-Key, or X-Demo-Code for the demo preset.
-const KEY_STORE = "vision-key";
+// vision model. Each provider keeps its own key, so a key typed for one is never sent to
+// another. They stay in this browser, in sessionStorage unless "Remember on this device"
+// is ticked (then localStorage), and leave the page only in the header of a vision read:
+// X-Model-Preset with X-Model-Key, or X-Demo-Code for the demo preset.
+const KEY_STORE = "vision-keys";
 const DEMO = "demo";
 const keyPanel = $("key-panel");
 const keyPreset = $("key-preset");
 const keyLabel = $("key-label");
 const keyInput = $("key-input");
 const keyRemember = $("key-remember");
+let keys = {}; // provider id -> key or demo code
 
-// Storage can be blocked; the key then lasts until the page is left.
+// Storage can be blocked; the keys then last until the page is left.
 function storage(name) {
   try {
     return window[name];
@@ -113,12 +115,17 @@ function storage(name) {
   }
 }
 
-function loadKey() {
+// What is stored: the provider last chosen and each provider's key.
+function loadKeys() {
   for (const name of ["localStorage", "sessionStorage"]) {
     try {
       const saved = JSON.parse(storage(name).getItem(KEY_STORE));
-      if (saved && typeof saved.key === "string" && saved.key) {
-        return { preset: saved.preset, key: saved.key, remember: name === "localStorage" };
+      if (saved && saved.keys && typeof saved.keys === "object") {
+        const found = {};
+        for (const [id, key] of Object.entries(saved.keys)) {
+          if (typeof key === "string" && key) found[id] = key;
+        }
+        return { preset: saved.preset, keys: found, remember: name === "localStorage" };
       }
     } catch (_) {
       // nothing usable stored here
@@ -127,7 +134,7 @@ function loadKey() {
   return null;
 }
 
-function forgetKey() {
+function forgetKeys() {
   for (const name of ["localStorage", "sessionStorage"]) {
     try {
       storage(name).removeItem(KEY_STORE);
@@ -137,15 +144,14 @@ function forgetKey() {
   }
 }
 
-function saveKey() {
-  forgetKey();
-  const key = keyInput.value.trim();
-  if (!key) return;
+function saveKeys() {
+  forgetKeys();
+  if (!Object.keys(keys).length) return;
   try {
     const store = storage(keyRemember.checked ? "localStorage" : "sessionStorage");
-    store.setItem(KEY_STORE, JSON.stringify({ preset: keyPreset.value, key }));
+    store.setItem(KEY_STORE, JSON.stringify({ preset: keyPreset.value, keys }));
   } catch (_) {
-    // blocked: the key stays in the field only
+    // blocked: the keys stay on this page only
   }
 }
 
@@ -154,7 +160,7 @@ function syncKeyLabel() {
 }
 
 // Fill the provider list (the demo preset only when demo codes work here), then the
-// stored key, if any.
+// stored keys, if any.
 function showPresets(presets, demoAvailable) {
   const offered = presets.filter((p) => p.id !== DEMO || demoAvailable);
   if (!offered.length) return;
@@ -164,32 +170,42 @@ function showPresets(presets, demoAvailable) {
     option.value = preset.id;
     keyPreset.append(option);
   }
-  const saved = loadKey();
-  const preferred = saved && offered.some((p) => p.id === saved.preset) ? saved.preset : null;
+  const saved = loadKeys();
+  const ids = offered.map((p) => p.id);
+  const preferred = saved && ids.includes(saved.preset) ? saved.preset : null;
   keyPreset.value = preferred || (demoAvailable ? DEMO : offered[0].id);
-  if (preferred) {
-    keyInput.value = saved.key;
+  if (saved) {
+    for (const id of ids) if (saved.keys[id]) keys[id] = saved.keys[id];
     keyRemember.checked = saved.remember;
   }
+  keyInput.value = keys[keyPreset.value] || "";
   syncKeyLabel();
   keyPanel.hidden = false;
   for (const button of pageList.querySelectorAll(".read-vision")) button.hidden = false;
 }
 
 function clearKey() {
-  forgetKey();
+  forgetKeys();
+  keys = {};
   keyInput.value = "";
   keyRemember.checked = false;
   showStatus("Key cleared from this browser.");
   keyInput.focus();
 }
 
+// The field always shows the chosen provider's own key, or nothing.
 keyPreset.addEventListener("change", () => {
+  keyInput.value = keys[keyPreset.value] || "";
   syncKeyLabel();
-  saveKey();
+  saveKeys();
 });
-keyInput.addEventListener("input", saveKey);
-keyRemember.addEventListener("change", saveKey);
+keyInput.addEventListener("input", () => {
+  const key = keyInput.value.trim();
+  if (key) keys[keyPreset.value] = key;
+  else delete keys[keyPreset.value];
+  saveKeys();
+});
+keyRemember.addEventListener("change", saveKeys);
 $("key-clear").addEventListener("click", clearKey);
 
 function syncModelField() {
@@ -359,7 +375,7 @@ function showResult(jobId, doc, format) {
 // code, and put the answer in place of the page. With no key yet, open the panel.
 async function readWithVision(jobId, doc, number, card, button) {
   const preset = keyPreset.value;
-  const secret = keyInput.value.trim();
+  const secret = keys[preset] || "";
   if (!secret) {
     keyPanel.open = true;
     keyInput.focus();
