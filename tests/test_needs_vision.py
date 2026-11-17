@@ -74,10 +74,14 @@ def test_the_low_confidence_setting_defaults_to_0_6():
     assert load_limits({"OCR_LOW_CONFIDENCE": "0.8"}).low_confidence == 0.8
 
 
-@pytest.mark.parametrize("value", ["0", "-0.1", "1.5", "high"])
+@pytest.mark.parametrize("value", ["0", "-0.1", "1.5", "high", "nan", "inf"])
 def test_a_low_confidence_outside_0_to_1_is_a_config_error(value):
     with pytest.raises(ConfigError, match="OCR_LOW_CONFIDENCE"):
         load_limits({"OCR_LOW_CONFIDENCE": value})
+
+
+def test_a_low_confidence_of_1_is_allowed():
+    assert load_limits({"OCR_LOW_CONFIDENCE": "1"}).low_confidence == 1.0
 
 
 def test_a_scanned_page_tesseract_scored_low_is_marked_with_the_reason(monkeypatch):
@@ -159,6 +163,10 @@ def test_the_mark_is_in_the_json_and_the_markdown(monkeypatch):
     markdown = render_markdown(doc)
     assert "> Needs a vision model: the page has no usable text layer" in markdown
     assert markdown.count("Needs a vision model") == 1
+    # the low-confidence text is still shown, after the note, as the JSON carries it
+    page_1 = markdown.split("## Page 2")[0]
+    assert page_1.index("Needs a vision model") < page_1.index("faint words")
+    assert markdown.count("faint words") == 2
 
 
 # --- the job keeps the PDF only while a page needs vision -----------------------------
@@ -536,3 +544,51 @@ def test_an_unexpected_error_while_reading_is_a_plain_502(marked, monkeypatch, c
     }
     assert FAKE_KEY not in caplog.text
     assert read_with_vision(marked).status_code == 502  # the page was let go: not page_busy
+
+
+def expire_now(store: JobStore, clock: Clock, job_id: str) -> None:
+    clock.now += 60
+    assert store.get(job_id) is None
+
+
+def test_a_job_that_expires_after_the_page_is_claimed_is_404(
+    marked,
+    store,
+    clock,
+    fake_provider,  # noqa: F811
+    monkeypatch,
+):
+    job = store.get(marked)
+    claim = job.start_reading
+
+    def claim_then_expire(number):
+        claimed = claim(number)
+        expire_now(store, clock, marked)
+        return claimed
+
+    monkeypatch.setattr(job, "start_reading", claim_then_expire)
+
+    response = read_with_vision(marked)
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "job_not_found"
+    assert fake_provider.requests == []
+    assert job.reading == set()  # the claim was let go
+
+
+def test_a_job_that_expires_while_the_page_is_read_is_404(marked, store, clock, monkeypatch):
+    job = store.get(marked)
+
+    def read_then_expire(png, number, config, model=None):
+        expire_now(store, clock, marked)
+        return vision.VisionResult(number=number, text="# Late", model=MODEL)
+
+    monkeypatch.setattr(vision, "read_image", read_then_expire)
+
+    response = read_with_vision(marked)
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "job_not_found"
+    assert job.result is None  # nothing was written into the expired job
+    assert job.pages[SCAN] == "ok"  # the job's progress kept what the job itself reported
+    assert job.reading == set()
