@@ -149,6 +149,26 @@ Everything is an environment variable; none is required.
 
 Vision setup, with vLLM, Ollama and cloud examples, is in [Vision model backend](docs/vision-backend.md).
 
+## Public demo
+
+This service can run as a public demo without spending the operator's money on anonymous visitors. Reading a PDF's text layer and scanning it with Tesseract need no model, so they are free and always on. A public demo leaves the server's own `OCR_LLM_*` vision backend off; vision is then the one method that costs money, and a visitor turns it on for one page at a time with a demo code or their own provider key.
+
+- **Free, no key or code:** `text_layer` and `tesseract` reads, through the web page, `POST /v1/extract` or a job. A page with no usable text layer is still read by Tesseract and returned, with a note when the result is doubtful.
+- **Needs a demo code or key:** a page that `auto` read with Tesseract and failed, or scored under `OCR_LOW_CONFIDENCE`, is marked `needs_vision` with the reason. On the web page, press **Read with a vision model** on that page; the key panel below the form holds the credentials. Through the API, call `POST /v1/jobs/{id}/pages/{n}/vision` for that page.
+- **Demo code:** the operator hands one out. The page sends it as `X-Demo-Code`; the service forwards it to the operator's internal demo gateway, which holds the provider key and the code's budget. Demo codes are offered only when the operator sets `DEMO_GATEWAY_URL` (`demo_available` in `/v1/capabilities`).
+- **Your own key:** choose a preset on the page and paste your key, or send `X-Model-Preset` with `X-Model-Key`. Only a preset id is accepted; a request can never name a base URL.
+- **Where the key lives:** only in your browser, in `sessionStorage` by default or `localStorage` when you tick **Remember on this device**, and only in the request headers of the vision read. The service uses it for that one request and never stores or logs it. This applies to the page route only: `POST /v1/extract` and `POST /v1/jobs` always use the operator's own `OCR_LLM_*` backend and ignore the credential headers, so whole-document vision stays an operator setting.
+
+| Preset | `X-Model-Preset` | Vision model | Notes |
+|---|---|---|---|
+| OpenAI | `openai` | `gpt-5-nano` | Model name from OpenAI's documentation; not yet checked with a real key. |
+| OpenRouter | `openrouter` | `qwen/qwen3.7-flash` | No speech model (not used here). |
+| Synthetic | `synthetic` | `syn:small:vision` | No embeddings or speech model in its public catalog (neither is used here). |
+| Alibaba (DashScope intl) | `alibaba` | `qwen-vl-plus` | No OpenAI-compatible speech model (not used here); model name from Alibaba's documentation and not yet checked with a real key. |
+| Demo code | `demo` | `demo-vision` | Only when `DEMO_GATEWAY_URL` is set; the gateway holds the provider key. |
+
+This service uses only each preset's vision model. A preset that fails a real-key check is marked as a gap in this table. The page side of the panel is in [The web page](docs/web-page.md); the headers and the route are in [the API reference](docs/api.md).
+
 ## Performance
 
 Twenty freely licensed PDFs (born-digital, two-column, tables, forms, scans and poor scans) with reference text, in [`benchmarks/`](benchmarks/README.md). Results from `uv run python benchmarks/run.py`, in the run of 2026-11-16 with Tesseract 5.5.4 and, for the vision row, `qwen2.5vl:7b` served by a local Ollama on an Apple M4 Mac mini, committed in [`benchmarks/results/2026-11-16.md`](benchmarks/results/2026-11-16.md) (raw results in [`2026-11-16.json`](benchmarks/results/2026-11-16.json)), which also has the per-document rows. The results file does not record the machine.

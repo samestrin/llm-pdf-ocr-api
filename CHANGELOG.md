@@ -12,6 +12,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ### Changed
 
+- README: a new "Public demo" section says what is free (the text layer and Tesseract, with no key), what needs a demo code or a visitor's own provider key (reading one marked page with a vision model), where the key lives, and which preset and vision model each provider offers, with the gaps in that table. `docs/api.md` names the three credential headers, says that only `POST /v1/jobs/{id}/pages/{n}/vision` reads them, and that `/v1/extract` and `/v1/jobs` ignore them.
 - README benchmark: the vision row is measured. One run on 2026-11-16 with `qwen2.5vl:7b` served by a local Ollama scored text 0.786, Table F1 0.682, 30.78 seconds a page and no failed pages; the results are in `benchmarks/results/2026-11-16.md` and `.json`. The Performance text and Known limits now give these numbers.
 
 ### Fixed

@@ -48,7 +48,15 @@ Jobs are held in the service's memory and run one at a time. The PDF is dropped 
 
 Reads page `n` of a `done` job, marked `needs_vision`, with a vision model, and replaces that page in the job's result: its `method` becomes `vision`, with the `model` and its `text`. The answer is the page as it now appears in the JSON result. The page is rendered again at 150 DPI from the PDF the job kept.
 
-The model comes from the request's credentials, used for this request only and never stored or logged: `X-Model-Preset` (a preset id from `GET /v1/capabilities`) with `X-Model-Key`, or `X-Demo-Code` for the `demo` preset. With none of them, the operator's own vision backend is used if one is configured.
+The model comes from the request's credentials, used for this request only and never stored or logged. With none of them, the operator's own vision backend is used if one is configured.
+
+| Header | Send it with | Meaning |
+|---|---|---|
+| `X-Model-Preset` | `X-Model-Key`, or alone for `demo` | A preset id from `GET /v1/capabilities`; the preset fixes the provider and model. |
+| `X-Model-Key` | `X-Model-Preset` | The visitor's key for that provider, for this request only. |
+| `X-Demo-Code` | alone, or with `X-Model-Preset: demo` | A demo code, forwarded to the operator's demo gateway. |
+
+Only this route reads those headers. `POST /v1/extract` and `POST /v1/jobs` always use the operator's own `OCR_LLM_*` vision backend and ignore them, so a whole document cannot be read on a visitor's key or demo code.
 
 ```bash
 curl -X POST -H 'X-Model-Preset: openai' -H "X-Model-Key: $KEY" localhost:5000/v1/jobs/<id>/pages/1/vision
