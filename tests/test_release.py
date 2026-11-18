@@ -104,7 +104,17 @@ def test_changelog_top_released_version_is_pyproject_version():
     assert "Unreleased" in sections
     top = [h for h in sections if h != "Unreleased"][0]
     assert re.fullmatch(rf"{re.escape(VERSION)} \(\d{{4}}-\d{{2}}-\d{{2}}\)", top)
-    assert "find box above the result" in sections[top]
-    assert "API reference at `/docs` now uses Scalar" in sections[top]
-    assert "README demo GIF" in sections[top]
-    assert "CI checks the API reference end to end" in sections[top]
+    assert "Pages that need vision" in sections[top]
+    assert "Web page: a page marked as needing vision" in sections[top]
+    assert "Public demo" in sections[top]
+
+
+def test_changelog_has_a_1_0_1_section_with_its_entries():
+    # The 1.0.1 release is history: its section keeps its date and entries untouched.
+    sections = changelog_sections()
+    heading = "1.0.1 (2026-11-12)"
+    assert heading in sections
+    assert "find box above the result" in sections[heading]
+    assert "API reference at `/docs` now uses Scalar" in sections[heading]
+    assert "README demo GIF" in sections[heading]
+    assert "CI checks the API reference end to end" in sections[heading]
