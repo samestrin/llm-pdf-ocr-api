@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+## 1.1.0 (2026-11-18)
+
 ### Added
 
 - `GET /v1/capabilities` also returns `presets` (each model provider's id, label and vision model, never its URL), `demo_available` (true only when the new `DEMO_GATEWAY_URL` setting is set) and `notice` (the new `PUBLIC_DEMO_NOTICE` setting), and `/openapi.json` gives its response schema. The presets live in `src/llm_pdf_ocr/presets.json` (OpenAI, OpenRouter, Synthetic, Alibaba DashScope, and `demo` for the demo-code gateway); a request may name one by id only, never by URL. `/v1/extract` and `/v1/jobs` are unchanged and ignore the new credential headers.
