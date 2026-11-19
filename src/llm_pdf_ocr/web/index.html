@@ -64,7 +64,7 @@
 
           <button id="submit" type="submit">Extract</button>
 
-          <p class="privacy">Your PDF is processed here and not stored: the file is dropped when its job ends, and the text and page images are deleted {{job_ttl}} later.</p>
+          <p class="privacy">Your PDF is processed here and not saved to disk: the file is dropped from memory when its job ends, unless a page needs a vision model, in which case it is kept in memory until the job expires, {{job_ttl}} after it ends. The text and page images are deleted {{job_ttl}} after the job ends.</p>
         </form>
 
         <details id="key-panel" class="panel key-panel" hidden>
