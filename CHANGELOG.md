@@ -20,6 +20,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 ### Fixed
 
 - API reference: `POST /v1/extract` and `GET /v1/jobs/{id}` now have response schemas in `/openapi.json`, so `/docs` shows their bodies: the JSON document with each page's method (and `text/markdown` as a string), the job's progress per page with its result, and the `{"error": ...}` body for their 400, 404, 413 and 422 answers. The 422 was documented as FastAPI's `detail` list, which the service never sends. The JSON the API returns is unchanged; a test checks live responses from a fixture PDF against the schemas.
+- Web page: the privacy line under the form said the PDF is dropped when its job ends, but a job with a page marked as needing vision keeps its PDF in memory until the job expires so that page can be read with a vision model. The line now names that exception and when the job expires (`OCR_JOB_TTL_SECONDS`, 1 hour by default), as `docs/api.md` already did, and so does `docs/web-page.md`. A test checks that the page, `docs/web-page.md` and `docs/api.md` agree.
 - Web page: while "Try a sample" downloads the sample PDF, the file field, Extract and Try a sample are disabled and a dropped file is ignored, as they already were while a job runs. Before, a file picked during a slow sample download was replaced by the sample and a second job could start alongside the first.
 
 ## 1.0.1 (2026-11-12)

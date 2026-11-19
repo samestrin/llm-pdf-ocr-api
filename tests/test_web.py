@@ -244,7 +244,8 @@ def test_the_page_states_the_configured_limits_and_keep_time(limits):
     html = client.get("/").text
 
     assert "up to 12.5 MB and 40 pages." in html
-    assert "deleted 30 minutes later." in html
+    assert "until the job expires, 30 minutes after it ends." in html
+    assert "deleted 30 minutes after the job ends." in html
     assert "{{" not in html
     assert "unless this service sets other limits" not in html
 
@@ -253,8 +254,37 @@ def test_the_page_states_the_default_limits_and_version():
     html = client.get("/").text
 
     assert "up to 50 MB and 500 pages." in html
-    assert "deleted 1 hour later." in html
+    assert "until the job expires, 1 hour after it ends." in html
+    assert "deleted 1 hour after the job ends." in html
     assert f"LLM PDF OCR {__version__}." in html
+
+
+def _privacy_line(html: str) -> str:
+    match = re.search(r'<p class="privacy">(.*?)</p>', html, re.S)
+    assert match, "the page has no privacy line"
+    return " ".join(match.group(1).split())
+
+
+def test_the_privacy_line_names_the_vision_exception():
+    # A job with a page marked needs_vision keeps its PDF until it expires (docs/api.md,
+    # Jobs); the page must not tell a visitor the file is always dropped when the job ends.
+    line = _privacy_line(client.get("/").text)
+
+    assert "dropped from memory when its job ends, unless a page needs a vision model" in line
+    assert "kept in memory until the job expires, 1 hour after it ends" in line
+
+
+def test_the_privacy_line_agrees_with_the_api_reference_and_web_page_docs():
+    docs = Path(__file__).resolve().parents[1] / "docs"
+    api = " ".join((docs / "api.md").read_text(encoding="utf-8").split())
+    web_page = " ".join((docs / "web-page.md").read_text(encoding="utf-8").split())
+    line = _privacy_line((WEB / "index.html").read_text(encoding="utf-8"))
+
+    assert "The PDF is dropped when its job ends, unless a page of its result is marked" in api
+    assert "keeps the PDF in memory until it expires" in api
+    for text in (line, web_page):
+        assert "unless a page needs a vision model" in text
+        assert "kept in memory until the job expires" in text
 
 
 @pytest.mark.parametrize(
