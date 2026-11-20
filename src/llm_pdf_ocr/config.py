@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_CONCURRENCY = 2
+# A dense page of Markdown is well under this; a thinking model is stopped long before it
+# can spend minutes reasoning or repeating itself.
+DEFAULT_MAX_TOKENS = 4096
 DEFAULT_MAX_FILE_MB = 50
 DEFAULT_MAX_PAGES = 500
 DEFAULT_PAGE_TIMEOUT = 120.0
@@ -61,6 +64,10 @@ class VisionConfig:
     allowed_models: tuple[str, ...] = ()
     timeout: float = DEFAULT_TIMEOUT
     concurrency: int = DEFAULT_CONCURRENCY
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    # The request field that carries `max_tokens`; OpenAI's GPT-5 models only read
+    # `max_completion_tokens`.
+    max_tokens_param: str = "max_tokens"
     fallback_to_tesseract: bool = False
 
     @property
@@ -184,5 +191,6 @@ def load_vision_config(env: Mapping[str, str] | None = None) -> VisionConfig:
         allowed_models=tuple(dict.fromkeys(allowed)) if base_url else (),
         timeout=_number(env, "OCR_LLM_TIMEOUT_SECONDS", DEFAULT_TIMEOUT, float),
         concurrency=_number(env, "OCR_LLM_CONCURRENCY", DEFAULT_CONCURRENCY, int),
+        max_tokens=_number(env, "OCR_LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS, int),
         fallback_to_tesseract=_flag(env, "OCR_LLM_FALLBACK_TO_TESSERACT"),
     )

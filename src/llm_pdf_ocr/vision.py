@@ -1,8 +1,11 @@
 """Read pages with a vision model behind an OpenAI-compatible endpoint.
 
-A page is rendered at a fixed DPI and sent to `{base_url}/chat/completions` with a
-fixed prompt asking for Markdown with tables. The reply's text, the model name and
-any usage numbers the endpoint reports are returned.
+A page is rendered at a fixed DPI, its longer side capped, and sent to
+`{base_url}/chat/completions` with a fixed prompt asking for Markdown with tables. The
+answer is capped at `VisionConfig.max_tokens`, and no temperature is sent: greedy decoding
+sends thinking models into long repetition. An answer cut off at the cap is an error, not
+a page with its end missing. The reply's text, the model name and any usage numbers the
+endpoint reports are returned.
 
 Requests in flight never exceed `VisionConfig.concurrency`, across all callers.
 Errors and log lines never contain the API key, the base URL, or the endpoint's
@@ -30,6 +33,8 @@ log = logging.getLogger(__name__)
 
 # Enough for body text and table rules, without the payload size of 300 DPI.
 RENDER_DPI = 150
+# Keeps Letter and A4 at the full DPI, and a poster-sized page from becoming a huge image.
+RENDER_MAX_SIDE = 2000
 
 PROMPT = (
     "Transcribe this page image into Markdown. "
@@ -62,6 +67,7 @@ class VisionResult:
     text: str
     model: str
     usage: dict[str, int | float] | None = None
+    finish_reason: str | None = None
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -84,7 +90,10 @@ def _limit(config: VisionConfig) -> threading.BoundedSemaphore:
 
 
 def render_page(page: pymupdf.Page) -> bytes:
-    return page.get_pixmap(dpi=RENDER_DPI).tobytes("png")
+    """Render a page as a PNG at RENDER_DPI, its longer side capped at RENDER_MAX_SIDE."""
+    longer = max(page.rect.width, page.rect.height)
+    scale = min(RENDER_DPI / 72, RENDER_MAX_SIDE / longer)
+    return page.get_pixmap(matrix=pymupdf.Matrix(scale, scale)).tobytes("png")
 
 
 def read_page(page: pymupdf.Page, config: VisionConfig, model: str | None = None) -> VisionResult:
@@ -102,11 +111,27 @@ def read_image(
     with _limit(config):
         started = time.monotonic()
         try:
-            result = _parse(_post(png, number, config, model), number, model)
+            result = _parse(_post(png, number, config, model), number, model, config)
         except VisionError as exc:
-            log.warning("page %d: vision model %s failed: %s", number, model, exc.code)
+            log.warning(
+                "page %d: vision model %s failed after %.2fs: %s",
+                number,
+                model,
+                time.monotonic() - started,
+                exc.code,
+            )
             raise
-        log.info("page %d: read by %s in %.2fs", number, model, time.monotonic() - started)
+        usage = result.usage or {}
+        log.info(
+            "page %d: read by %s in %.2fs (%d KB image, %s tokens in, %s tokens out, finish %s)",
+            number,
+            model,
+            time.monotonic() - started,
+            len(png) // 1024,
+            usage.get("prompt_tokens", "?"),
+            usage.get("completion_tokens", "?"),
+            result.finish_reason or "?",
+        )
     return result
 
 
@@ -150,7 +175,7 @@ def _post(png: bytes, number: int, config: VisionConfig, model: str) -> bytes:
                 ],
             }
         ],
-        "temperature": 0,
+        config.max_tokens_param: config.max_tokens,
     }
     headers = {"Content-Type": "application/json"}
     if config.api_key:
@@ -196,14 +221,22 @@ def _timeout(number: int, config: VisionConfig) -> VisionError:
     )
 
 
-def _parse(raw: bytes, number: int, model: str) -> VisionResult:
+def _parse(raw: bytes, number: int, model: str, config: VisionConfig) -> VisionResult:
     try:
         reply = json.loads(raw)
-        content = reply["choices"][0]["message"]["content"]
+        choice = reply["choices"][0]
+        content = choice["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError):
         content = None
     if not isinstance(content, str):
         raise VisionError("bad_response", "the vision model sent an unreadable reply", number)
+    finish_reason = choice.get("finish_reason")
+    if finish_reason == "length":
+        raise VisionError(
+            "too_long",
+            f"the vision model's answer was cut off at {config.max_tokens} tokens",
+            number,
+        )
     text = content.strip()
     fenced = _FENCE.match(text)
     if fenced:
@@ -216,6 +249,7 @@ def _parse(raw: bytes, number: int, model: str) -> VisionResult:
         text=text,
         model=reported if isinstance(reported, str) and reported else model,
         usage=_usage(reply.get("usage")),
+        finish_reason=finish_reason if isinstance(finish_reason, str) else None,
     )
 
 

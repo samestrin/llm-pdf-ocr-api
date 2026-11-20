@@ -1,7 +1,8 @@
 """Model presets a visitor may pick, and the vision config built from their key for one request.
 
 The presets live in `presets.json`, beside this file: an id, a label, an OpenAI-compatible
-base URL and a vision model each, plus `demo`, whose base URL is the internal
+base URL and a vision model each (and `max_tokens_param` where the provider does not read
+`max_tokens`), plus `demo`, whose base URL is the internal
 `DEMO_GATEWAY_URL` and whose key is a demo code the owner handed out.
 
 A request names a preset by id in `X-Model-Preset` and sends its key in `X-Model-Key`, or a
@@ -27,6 +28,7 @@ DEMO = "demo"
 # The one internal address a preset may name; its value comes from PublicDemoConfig.
 DEMO_GATEWAY_ENV = "DEMO_GATEWAY_URL"
 MAX_KEY_LENGTH = 512
+MAX_TOKENS_PARAMS = ("max_tokens", "max_completion_tokens")
 
 _ID_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789-")
 
@@ -38,6 +40,7 @@ class Preset:
     vision_model: str
     base_url: str | None = None
     base_url_env: str | None = None
+    max_tokens_param: str = "max_tokens"
 
 
 class CredentialsError(ValueError):
@@ -79,6 +82,11 @@ def _read(path: Path) -> tuple[Preset, ...]:
             raise ValueError(f"preset {preset_id!r} needs a base_url")
         elif not base_url.startswith("https://"):
             raise ValueError(f"preset {preset_id!r}: base_url must be https")
+        max_tokens_param = entry.get("max_tokens_param", "max_tokens")
+        if max_tokens_param not in MAX_TOKENS_PARAMS:
+            raise ValueError(
+                f"preset {preset_id!r}: max_tokens_param must be one of {MAX_TOKENS_PARAMS}"
+            )
         presets.append(
             Preset(
                 id=preset_id,
@@ -86,6 +94,7 @@ def _read(path: Path) -> tuple[Preset, ...]:
                 vision_model=entry["vision_model"],
                 base_url=base_url.rstrip("/") if base_url else None,
                 base_url_env=base_url_env,
+                max_tokens_param=max_tokens_param,
             )
         )
     return tuple(presets)
@@ -102,8 +111,9 @@ def request_vision_config(
     """The vision config for one request, from its credential headers.
 
     With none of the headers, the server's own config is returned unchanged (off when no
-    vision backend is configured). Otherwise the preset decides the base URL and model,
-    and the key or demo code is the API key; timeout and concurrency stay the server's.
+    vision backend is configured). Otherwise the preset decides the base URL, model and
+    token-cap field, and the key or demo code is the API key; timeout, concurrency and the
+    token cap stay the server's.
     Raises CredentialsError.
     """
     sent = {name.lower(): value.strip() for name, value in headers.items()}
@@ -144,4 +154,6 @@ def request_vision_config(
         allowed_models=(preset.vision_model,),
         timeout=server.timeout,
         concurrency=server.concurrency,
+        max_tokens=server.max_tokens,
+        max_tokens_param=preset.max_tokens_param,
     )

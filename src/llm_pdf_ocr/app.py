@@ -47,6 +47,7 @@ and it goes off with the web page. FastAPI's own docs pages and ReDoc are turned
 
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
@@ -657,6 +658,7 @@ _PLAIN_VISION_ERRORS = {
     "unreachable": "the provider could not be reached; try again later",
     "bad_response": "the vision model sent back no text for this page",
     "empty_response": "the vision model sent back no text for this page",
+    "too_long": "the vision model's answer ran too long for one page; try again",
 }
 
 
@@ -701,9 +703,10 @@ def read_page_with_vision(
     The model is the preset's, used with the visitor's key (`X-Model-Preset` and
     `X-Model-Key`) or demo code (`X-Demo-Code`) for this request only; without them,
     the server's own vision backend if it has one. The job keeps its PDF until it expires
-    while a page needs vision; the page is rendered from it again at 150 DPI. The answer is
-    the page as it now appears in the job's result. If the provider fails, the page stays
-    marked and may be tried again.
+    while a page needs vision; the page is rendered from it again at 150 DPI, its longer
+    side at most 2000 px. The model's answer is capped at `OCR_LLM_MAX_TOKENS`. The answer
+    is the page as it now appears in the job's result. If the provider fails, the page
+    stays marked and may be tried again.
     """
     job = request.app.state.jobs.get(job_id)
     if job is None:
@@ -732,8 +735,10 @@ def read_page_with_vision(
         if data is None:  # expired since it was looked up
             return _error("job_not_found", "no job with this id, or it has expired", 404)
         try:
+            started = time.monotonic()
             with open_pdf(data) as doc:
                 png = vision_model.render_page(doc[number - 1])
+            log.info("page %d: rendered for vision in %.2fs", number, time.monotonic() - started)
             read = vision_model.read_image(png, number, vision)
         except vision_model.VisionError as exc:
             return _error("vision_failed", _plain_vision_error(exc), 502)
