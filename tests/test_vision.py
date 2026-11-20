@@ -283,8 +283,10 @@ def test_a_complete_answer_is_kept(server):
     assert read_page(text_page(), server.config()).text == "# Page"
 
 
-def test_a_cut_off_answer_names_the_cap(server):
-    server.reply = lambda body: (200, completion("# Page", finish_reason="length"))
+@pytest.mark.parametrize("finish_reason", ["length", "max_tokens"])
+def test_a_cut_off_answer_names_the_cap(server, finish_reason):
+    # Some OpenAI-compatible endpoints spell the cap cut-off "max_tokens".
+    server.reply = lambda body: (200, completion("# Page", finish_reason=finish_reason))
 
     with pytest.raises(VisionError) as info:
         read_page(text_page(), server.config(max_tokens=1234))
@@ -302,6 +304,72 @@ def test_the_log_line_gives_the_time_and_tokens_of_a_read(server, caplog):
 
     line = next(r.getMessage() for r in caplog.records if "read by" in r.getMessage())
     assert "812 tokens in" in line and "40 tokens out" in line and "finish stop" in line
+
+
+def test_a_dense_page_fits_under_the_default_cap(server):
+    # Page 1 of the W-9 scan was cut off at 1.1.1's 4096 tokens, a thinking model's
+    # reasoning counted against the same cap. The default leaves room for both.
+    dense = "\n".join(f"| line {i} | {'word ' * 12}|" for i in range(600))
+    usage = {
+        "prompt_tokens": 1900,
+        "completion_tokens": 9800,
+        "completion_tokens_details": {"reasoning_tokens": 4100},
+    }
+    server.reply = lambda body: (
+        (200, completion(dense, usage=usage, finish_reason="stop"))
+        if body["max_tokens"] > usage["completion_tokens"]
+        else (200, completion(dense[:4000], usage=usage, finish_reason="length"))
+    )
+
+    result = read_page(text_page(), server.config(max_tokens=VisionConfig().max_tokens))
+
+    assert result.text == dense
+    assert result.finish_reason == "stop"
+
+
+def test_reasoning_tokens_are_kept_from_the_usage_details(server):
+    usage = {
+        "prompt_tokens": 10,
+        "completion_tokens": 900,
+        "completion_tokens_details": {"reasoning_tokens": 700, "audio_tokens": 0},
+    }
+    server.reply = lambda body: (200, completion("x", usage=usage))
+
+    result = read_page(text_page(), server.config())
+
+    assert result.usage == {"prompt_tokens": 10, "completion_tokens": 900, "reasoning_tokens": 700}
+
+
+def test_the_log_line_gives_the_reasoning_tokens(server, caplog):
+    caplog.set_level(logging.INFO)
+    usage = {
+        "prompt_tokens": 812,
+        "completion_tokens": 900,
+        "completion_tokens_details": {"reasoning_tokens": 700},
+    }
+    server.reply = lambda body: (200, completion("# Page", usage=usage, finish_reason="stop"))
+
+    read_page(text_page(), server.config())
+
+    line = next(r.getMessage() for r in caplog.records if "read by" in r.getMessage())
+    assert "900 tokens out (700 reasoning)" in line
+
+
+def test_a_cut_off_read_logs_where_the_tokens_went(server, caplog):
+    caplog.set_level(logging.INFO)
+    usage = {
+        "prompt_tokens": 812,
+        "completion_tokens": 1234,
+        "completion_tokens_details": {"reasoning_tokens": 1000},
+    }
+    server.reply = lambda body: (200, completion("# Pa", usage=usage, finish_reason="length"))
+
+    with pytest.raises(VisionError):
+        read_page(text_page(), server.config(max_tokens=1234))
+
+    line = next(r.getMessage() for r in caplog.records if "failed after" in r.getMessage())
+    assert "too_long" in line
+    assert "1234 tokens out (1000 reasoning)" in line and "cap 1234" in line
 
 
 def test_surrounding_markdown_fence_is_removed(server):
