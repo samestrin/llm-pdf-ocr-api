@@ -49,7 +49,7 @@ def test_defaults_for_timeout_and_concurrency():
     config = load_vision_config({"OCR_LLM_BASE_URL": "http://x", "OCR_LLM_DEFAULT_MODEL": "m"})
     assert config.timeout == 60.0
     assert config.concurrency == 2
-    assert config.max_tokens == 4096
+    assert config.max_tokens == 16384
     assert config.max_tokens_param == "max_tokens"
     assert config.allowed_models == ("m",)
 
@@ -68,12 +68,21 @@ def test_base_url_without_default_model_is_an_error():
         ("OCR_LLM_CONCURRENCY", "0"),
         ("OCR_LLM_MAX_TOKENS", "1.5"),
         ("OCR_LLM_MAX_TOKENS", "0"),
+        ("OCR_LLM_MAX_TOKENS", "65537"),
+        ("OCR_LLM_MAX_TOKENS", "1000000"),
         ("OCR_LLM_FALLBACK_TO_TESSERACT", "maybe"),
     ],
 )
 def test_bad_values_raise(name, value):
     with pytest.raises(ConfigError, match=name):
         load_vision_config({**FULL, name: value})
+
+
+def test_the_token_cap_is_bounded():
+    # A huge cap would let a runaway answer run until the timeout, the 1.1.0 failure.
+    with pytest.raises(ConfigError, match="at most 65536"):
+        load_vision_config({**FULL, "OCR_LLM_MAX_TOKENS": "65537"})
+    assert load_vision_config({**FULL, "OCR_LLM_MAX_TOKENS": "65536"}).max_tokens == 65536
 
 
 @pytest.mark.parametrize("value", ["1", "yes", "ON", "True"])

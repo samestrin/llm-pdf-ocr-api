@@ -46,7 +46,7 @@ Jobs are held in the service's memory and run one at a time. The PDF is dropped 
 
 **Endpoint:** `/v1/jobs/{id}/pages/{n}/vision` **Method:** POST
 
-Reads page `n` of a `done` job, marked `needs_vision`, with a vision model, and replaces that page in the job's result: its `method` becomes `vision`, with the `model` and its `text`. The answer is the page as it now appears in the JSON result. The page is rendered again at 150 DPI (its longer side at most 2000 pixels) from the PDF the job kept, and the model's answer is capped at `OCR_LLM_MAX_TOKENS` tokens (4096 by default); an answer cut off at the cap is a 502 `vision_failed`, and the page stays marked.
+Reads page `n` of a `done` job, marked `needs_vision`, with a vision model, and replaces that page in the job's result: its `method` becomes `vision`, with the `model` and its `text`. The answer is the page as it now appears in the JSON result. The page is rendered again at 150 DPI (its longer side at most 2000 pixels) from the PDF the job kept, and the model's answer is capped at `OCR_LLM_MAX_TOKENS` tokens (16384 by default); an answer cut off at the cap is a 502 `vision_failed`, and the page stays marked.
 
 The model comes from the request's credentials, used for this request only and never stored or logged. With none of them, the operator's own vision backend is used if one is configured.
 
