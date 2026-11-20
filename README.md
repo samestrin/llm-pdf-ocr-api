@@ -135,7 +135,7 @@ Everything is an environment variable; none is required.
 | `OCR_LLM_API_KEY` | empty | Bearer key for the endpoint. |
 | `OCR_LLM_TIMEOUT_SECONDS` | 60 | Per-request timeout to the vision endpoint. |
 | `OCR_LLM_CONCURRENCY` | 2 | Vision requests in flight at once. |
-| `OCR_LLM_MAX_TOKENS` | 4096 | Most tokens the vision model may write for one page, the visitor's preset or demo code included. An answer cut off at this cap is a failed read (`vision_failed`), never a page with its end missing. |
+| `OCR_LLM_MAX_TOKENS` | 16384 | Most tokens the vision model may write for one page, the visitor's preset or demo code included; a thinking model's reasoning counts against it. At most 65536. An answer cut off at this cap is a failed read (`vision_failed`), never a page with its end missing. |
 | `OCR_LLM_FALLBACK_TO_TESSERACT` | false (true in `docker-compose.yml`) | Read a page with Tesseract when the vision model fails it. |
 | `OCR_MAX_FILE_MB` | 50 | Largest upload; over it, 413 `file_too_large`. The web page states it. |
 | `OCR_MAX_PAGES` | 500 | Most pages in one PDF; over it, 413 `too_many_pages`. The web page states it. |

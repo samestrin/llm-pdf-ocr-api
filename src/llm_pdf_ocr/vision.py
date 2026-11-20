@@ -5,7 +5,7 @@ A page is rendered at a fixed DPI, its longer side capped, and sent to
 answer is capped at `VisionConfig.max_tokens`, and no temperature is sent: greedy decoding
 sends thinking models into long repetition. An answer cut off at the cap is an error, not
 a page with its end missing. The reply's text, the model name and any usage numbers the
-endpoint reports are returned.
+endpoint reports, reasoning tokens included, are returned and logged.
 
 Requests in flight never exceed `VisionConfig.concurrency`, across all callers.
 Errors and log lines never contain the API key, the base URL, or the endpoint's
@@ -43,17 +43,21 @@ PROMPT = (
     "Return only the Markdown, with no commentary and no code fence."
 )
 
+# Finish reasons for an answer stopped at the cap; some endpoints spell it "max_tokens".
+_CUT_OFF = ("length", "max_tokens")
+
 _FENCE = re.compile(r"\A```[a-zA-Z]*\n(.*?)\n?```\Z", re.DOTALL)
 
 
 class VisionError(Exception):
     """The vision model could not read a page. The message is safe to show and log."""
 
-    def __init__(self, code: str, message: str, number: int | None = None, status=None):
+    def __init__(self, code: str, message: str, number: int | None = None, status=None, usage=None):
         super().__init__(message)
         self.code = code
         self.number = number
         self.status = status
+        self.usage = usage
 
     def __repr__(self) -> str:
         return f"VisionError(code={self.code!r}, message={str(self)!r}, number={self.number!r})"
@@ -114,25 +118,34 @@ def read_image(
             result = _parse(_post(png, number, config, model), number, model, config)
         except VisionError as exc:
             log.warning(
-                "page %d: vision model %s failed after %.2fs: %s",
+                "page %d: vision model %s failed after %.2fs: %s (%s, cap %d)",
                 number,
                 model,
                 time.monotonic() - started,
                 exc.code,
+                _tokens(exc.usage),
+                config.max_tokens,
             )
             raise
-        usage = result.usage or {}
         log.info(
-            "page %d: read by %s in %.2fs (%d KB image, %s tokens in, %s tokens out, finish %s)",
+            "page %d: read by %s in %.2fs (%d KB image, %s, finish %s)",
             number,
             model,
             time.monotonic() - started,
             len(png) // 1024,
-            usage.get("prompt_tokens", "?"),
-            usage.get("completion_tokens", "?"),
+            _tokens(result.usage),
             result.finish_reason or "?",
         )
     return result
+
+
+def _tokens(usage: dict[str, int | float] | None) -> str:
+    usage = usage or {}
+    tokens_in = usage.get("prompt_tokens", "?")
+    out = f"{tokens_in} tokens in, {usage.get('completion_tokens', '?')} tokens out"
+    if "reasoning_tokens" in usage:
+        out += f" ({usage['reasoning_tokens']} reasoning)"
+    return out
 
 
 def read_pdf_pages(
@@ -231,11 +244,13 @@ def _parse(raw: bytes, number: int, model: str, config: VisionConfig) -> VisionR
     if not isinstance(content, str):
         raise VisionError("bad_response", "the vision model sent an unreadable reply", number)
     finish_reason = choice.get("finish_reason")
-    if finish_reason == "length":
+    usage = _usage(reply.get("usage"))
+    if finish_reason in _CUT_OFF:
         raise VisionError(
             "too_long",
             f"the vision model's answer was cut off at {config.max_tokens} tokens",
             number,
+            usage=usage,
         )
     text = content.strip()
     fenced = _FENCE.match(text)
@@ -248,7 +263,7 @@ def _parse(raw: bytes, number: int, model: str, config: VisionConfig) -> VisionR
         number=number,
         text=text,
         model=reported if isinstance(reported, str) and reported else model,
-        usage=_usage(reply.get("usage")),
+        usage=usage,
         finish_reason=finish_reason if isinstance(finish_reason, str) else None,
     )
 
@@ -256,9 +271,13 @@ def _parse(raw: bytes, number: int, model: str, config: VisionConfig) -> VisionR
 def _usage(usage) -> dict[str, int | float] | None:
     if not isinstance(usage, dict):
         return None
-    numbers = {
-        key: value
-        for key, value in usage.items()
-        if isinstance(value, int | float) and not isinstance(value, bool)
-    }
+    numbers = {key: value for key, value in usage.items() if _is_number(value)}
+    # OpenAI and OpenRouter count a thinking model's reasoning inside completion_tokens.
+    details = usage.get("completion_tokens_details")
+    if isinstance(details, dict) and _is_number(details.get("reasoning_tokens")):
+        numbers["reasoning_tokens"] = details["reasoning_tokens"]
     return numbers or None
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)

@@ -11,9 +11,12 @@ from dataclasses import dataclass, field
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_CONCURRENCY = 2
-# A dense page of Markdown is well under this; a thinking model is stopped long before it
-# can spend minutes reasoning or repeating itself.
-DEFAULT_MAX_TOKENS = 4096
+# Room for a dense page of Markdown plus a thinking model's reasoning, which most providers
+# count against the same cap; 4096 cut real pages off. A runaway still stops at about two
+# minutes at the 130 tokens a second the demo's providers write.
+DEFAULT_MAX_TOKENS = 16384
+# Above this the cap no longer stops a runaway before any sensible timeout.
+MAX_MAX_TOKENS = 65536
 DEFAULT_MAX_FILE_MB = 50
 DEFAULT_MAX_PAGES = 500
 DEFAULT_PAGE_TIMEOUT = 120.0
@@ -172,6 +175,13 @@ def load_web_page(env: Mapping[str, str] | None = None) -> bool:
     return _get(env, "OCR_WEB_PAGE") is None or _flag(env, "OCR_WEB_PAGE")
 
 
+def _max_tokens(env: Mapping[str, str]) -> int:
+    value = _number(env, "OCR_LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS, int)
+    if value > MAX_MAX_TOKENS:
+        raise ConfigError(f"OCR_LLM_MAX_TOKENS must be at most {MAX_MAX_TOKENS}, got {value}")
+    return value
+
+
 def load_vision_config(env: Mapping[str, str] | None = None) -> VisionConfig:
     env = os.environ if env is None else env
     base_url = _get(env, "OCR_LLM_BASE_URL")
@@ -191,6 +201,6 @@ def load_vision_config(env: Mapping[str, str] | None = None) -> VisionConfig:
         allowed_models=tuple(dict.fromkeys(allowed)) if base_url else (),
         timeout=_number(env, "OCR_LLM_TIMEOUT_SECONDS", DEFAULT_TIMEOUT, float),
         concurrency=_number(env, "OCR_LLM_CONCURRENCY", DEFAULT_CONCURRENCY, int),
-        max_tokens=_number(env, "OCR_LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS, int),
+        max_tokens=_max_tokens(env),
         fallback_to_tesseract=_flag(env, "OCR_LLM_FALLBACK_TO_TESSERACT"),
     )

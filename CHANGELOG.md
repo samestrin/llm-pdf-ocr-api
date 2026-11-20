@@ -4,6 +4,12 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+## 1.1.2 (2026-11-20)
+
+### Fixed
+
+- Vision reads of a dense page failed with "the vision model's answer ran too long for one page; try again" on the Synthetic and OpenRouter presets: 1.1.1's 4096-token cap on each page's answer was too small for the page's text plus a thinking model's reasoning, which counts against the same cap. `OCR_LLM_MAX_TOKENS` now defaults to 16384 and refuses values over 65536. A cut-off answer still fails the page, also when the endpoint reports it as `max_tokens`, and each read's log line gives its reasoning tokens when the provider reports them, on a failed read too.
+
 ## 1.1.1 (2026-11-20)
 
 ### Fixed
