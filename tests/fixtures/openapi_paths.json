@@ -297,7 +297,7 @@
   },
   "/v1/jobs/{job_id}/pages/{number}/vision": {
     "post": {
-      "description": "Read one page marked `needs_vision` with a vision model, and replace its result.\n\nThe model is the preset's, used with the visitor's key (`X-Model-Preset` and\n`X-Model-Key`) or demo code (`X-Demo-Code`) for this request only; without them,\nthe server's own vision backend if it has one. The job keeps its PDF until it expires\nwhile a page needs vision; the page is rendered from it again at 150 DPI. The answer is\nthe page as it now appears in the job's result. If the provider fails, the page stays\nmarked and may be tried again.",
+      "description": "Read one page marked `needs_vision` with a vision model, and replace its result.\n\nThe model is the preset's, used with the visitor's key (`X-Model-Preset` and\n`X-Model-Key`) or demo code (`X-Demo-Code`) for this request only; without them,\nthe server's own vision backend if it has one. The job keeps its PDF until it expires\nwhile a page needs vision; the page is rendered from it again at 150 DPI, its longer\nside at most 2000 px. The model's answer is capped at `OCR_LLM_MAX_TOKENS`. The answer\nis the page as it now appears in the job's result. If the provider fails, the page\nstays marked and may be tried again.",
       "operationId": "read_page_with_vision_v1_jobs__job_id__pages__number__vision_post",
       "parameters": [
         {

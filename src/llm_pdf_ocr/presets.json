@@ -3,7 +3,8 @@
     "id": "openai",
     "label": "OpenAI",
     "base_url": "https://api.openai.com/v1",
-    "vision_model": "gpt-5-nano"
+    "vision_model": "gpt-5-nano",
+    "max_tokens_param": "max_completion_tokens"
   },
   {
     "id": "openrouter",

@@ -15,6 +15,7 @@ FULL = {
     "OCR_LLM_ALLOWED_MODELS": "vision-b, vision-c",
     "OCR_LLM_TIMEOUT_SECONDS": "12.5",
     "OCR_LLM_CONCURRENCY": "3",
+    "OCR_LLM_MAX_TOKENS": "2048",
     "OCR_LLM_FALLBACK_TO_TESSERACT": "true",
 }
 
@@ -40,6 +41,7 @@ def test_set_reads_every_field():
     assert config.allowed_models == ("vision-a", "vision-b", "vision-c")
     assert config.timeout == 12.5
     assert config.concurrency == 3
+    assert config.max_tokens == 2048
     assert config.fallback_to_tesseract is True
 
 
@@ -47,6 +49,8 @@ def test_defaults_for_timeout_and_concurrency():
     config = load_vision_config({"OCR_LLM_BASE_URL": "http://x", "OCR_LLM_DEFAULT_MODEL": "m"})
     assert config.timeout == 60.0
     assert config.concurrency == 2
+    assert config.max_tokens == 4096
+    assert config.max_tokens_param == "max_tokens"
     assert config.allowed_models == ("m",)
 
 
@@ -62,6 +66,8 @@ def test_base_url_without_default_model_is_an_error():
         ("OCR_LLM_TIMEOUT_SECONDS", "0"),
         ("OCR_LLM_CONCURRENCY", "1.5"),
         ("OCR_LLM_CONCURRENCY", "0"),
+        ("OCR_LLM_MAX_TOKENS", "1.5"),
+        ("OCR_LLM_MAX_TOKENS", "0"),
         ("OCR_LLM_FALLBACK_TO_TESSERACT", "maybe"),
     ],
 )

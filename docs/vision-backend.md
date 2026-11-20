@@ -16,9 +16,12 @@ All settings are environment variables, read once when the service starts. A bad
 | `OCR_LLM_API_KEY` | none | Sent as `Authorization: Bearer <key>`. Leave unset for an endpoint that needs no key. |
 | `OCR_LLM_TIMEOUT_SECONDS` | `60` | How long to wait for one page. |
 | `OCR_LLM_CONCURRENCY` | `2` | Most pages in flight at once, across all requests. |
+| `OCR_LLM_MAX_TOKENS` | `4096` | Most tokens the model may write for one page, sent as `max_tokens`. A thinking model is stopped there instead of reasoning until the timeout. An answer cut off at the cap is a failed page (`vision_failed`), never a page with its end missing. |
 | `OCR_LLM_FALLBACK_TO_TESSERACT` | `false` | Whether a page the model cannot read may be read with Tesseract instead. When `false`, a page the model cannot read (timeout, HTTP 429, another error or a bad reply) is returned as `failed` with `vision_failed` and the reason in its message. When `true`, Tesseract reads it instead and the page's `fallback` (JSON) or a `Read with Tesseract because ...` line (Markdown) names the model and the reason. |
 
-Each page is rendered at 150 DPI and sent as a PNG with a fixed prompt. Callers cannot change the prompt.
+Each page is rendered at 150 DPI, its longer side at most 2000 pixels (Letter and A4 keep the full 150 DPI), and sent as a PNG with a fixed prompt. Callers cannot change the prompt. No temperature is sent, so the model uses its provider's default: greedy decoding (temperature 0) sends thinking models such as Qwen3 and GLM into long repetition.
+
+Each read is logged with its time, image size, tokens in and out and the model's finish reason, and the page route also logs how long the render took; neither line has the key or the base URL.
 
 The API key and the base URL never appear in a response, an error or a log line, and the service refuses redirects, so the key is only ever sent to the configured endpoint.
 
