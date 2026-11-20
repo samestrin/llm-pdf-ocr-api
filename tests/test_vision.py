@@ -77,12 +77,15 @@ class FakeServer:
         return VisionConfig(**settings)
 
 
-def completion(text, model=MODEL, usage=None):
+def completion(text, model=MODEL, usage=None, finish_reason=None):
+    choice = {"index": 0, "message": {"role": "assistant", "content": text}}
+    if finish_reason is not None:
+        choice["finish_reason"] = finish_reason
     body = {
         "id": "chatcmpl-1",
         "object": "chat.completion",
         "model": model,
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}}],
+        "choices": [choice],
     }
     if usage is not None:
         body["usage"] = usage
@@ -139,6 +142,51 @@ def test_sends_the_page_image_with_the_fixed_prompt(server):
     # 144x72 pt rendered at the fixed DPI.
     assert (png.width, png.height) == (2 * vision.RENDER_DPI, vision.RENDER_DPI)
     assert result.number == 1
+
+
+def test_a_page_larger_than_letter_is_rendered_no_wider_than_the_cap(server):
+    # 20x10 inches: 3000x1500 px at the fixed DPI, scaled down to fit the longer side.
+    doc = pymupdf.open()
+    page = doc.new_page(width=1440, height=720)
+    page.insert_text((10, 40), "wide")
+
+    png = pymupdf.Pixmap(vision.render_page(page))
+
+    assert max(png.width, png.height) <= vision.RENDER_MAX_SIDE
+    assert (png.width, png.height) == (vision.RENDER_MAX_SIDE, vision.RENDER_MAX_SIDE // 2)
+
+
+def test_a_letter_page_keeps_the_full_dpi():
+    doc = pymupdf.open()
+    page = doc.new_page(width=612, height=792)  # US Letter, as the W-9 scan
+
+    png = pymupdf.Pixmap(vision.render_page(page))
+
+    assert (png.width, png.height) == (1275, 1650)  # 150 DPI, under the cap
+
+
+def test_the_answer_is_capped_at_the_configured_tokens(server):
+    read_page(text_page(), server.config(max_tokens=1234))
+
+    body = server.requests[0][2]
+    assert body["max_tokens"] == 1234
+    assert "max_completion_tokens" not in body
+
+
+def test_the_cap_uses_the_field_the_provider_reads(server):
+    read_page(text_page(), server.config(max_tokens=1234, max_tokens_param="max_completion_tokens"))
+
+    body = server.requests[0][2]
+    assert body["max_completion_tokens"] == 1234
+    assert "max_tokens" not in body
+
+
+def test_no_temperature_is_sent(server):
+    # Greedy decoding (temperature 0) sends thinking models such as Qwen3 and GLM into
+    # long repetition; the provider's default sampling is used instead.
+    read_page(text_page(), server.config())
+
+    assert "temperature" not in server.requests[0][2]
 
 
 def test_prompt_is_the_same_for_every_page(server):
@@ -229,6 +277,33 @@ def test_model_name_falls_back_to_the_requested_model(server):
     assert read_page(text_page(), server.config()).model == MODEL
 
 
+def test_a_complete_answer_is_kept(server):
+    server.reply = lambda body: (200, completion("# Page", finish_reason="stop"))
+
+    assert read_page(text_page(), server.config()).text == "# Page"
+
+
+def test_a_cut_off_answer_names_the_cap(server):
+    server.reply = lambda body: (200, completion("# Page", finish_reason="length"))
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(max_tokens=1234))
+
+    assert info.value.code == "too_long"
+    assert "1234 tokens" in str(info.value)
+
+
+def test_the_log_line_gives_the_time_and_tokens_of_a_read(server, caplog):
+    caplog.set_level(logging.INFO)
+    usage = {"prompt_tokens": 812, "completion_tokens": 40, "total_tokens": 852}
+    server.reply = lambda body: (200, completion("# Page", usage=usage, finish_reason="stop"))
+
+    read_page(text_page(), server.config())
+
+    line = next(r.getMessage() for r in caplog.records if "read by" in r.getMessage())
+    assert "812 tokens in" in line and "40 tokens out" in line and "finish stop" in line
+
+
 def test_surrounding_markdown_fence_is_removed(server):
     server.reply = lambda body: (200, completion("```markdown\n# Title\n\nBody\n```\n"))
 
@@ -248,6 +323,7 @@ def test_surrounding_markdown_fence_is_removed(server):
         (200, {"choices": []}, "bad_response"),
         (200, {"choices": [{"message": {"content": None}}]}, "bad_response"),
         (200, completion("   \n"), "empty_response"),
+        (200, completion("# Page\n\nhalf a sen", finish_reason="length"), "too_long"),
     ],
 )
 def test_endpoint_failures_raise_sanitized_errors(server, status, payload, code):

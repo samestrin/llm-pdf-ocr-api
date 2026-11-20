@@ -422,8 +422,12 @@ def test_a_second_read_of_a_page_being_read_is_refused(marked, fake_provider):  
             lambda body: (None, b"garbage"),
             "the vision model sent back no text for this page",
         ),
+        (
+            lambda body: (200, completion("# Page", finish_reason="length")),
+            "the vision model's answer ran too long for one page; try again",
+        ),
     ],
-    ids=["401", "403", "429", "500", "empty", "garbage"],
+    ids=["401", "403", "429", "500", "empty", "garbage", "too-long"],
 )
 def test_a_provider_error_maps_to_plain_wording(
     marked,

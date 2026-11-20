@@ -42,7 +42,7 @@ from llm_pdf_ocr.vision import VisionError, read_image
 FAKE_KEY = "sk-visitor-fake-key-PLANTED-7f3a9c"
 DEMO_CODE = "sk-demo-PLANTEDDEMOCODE234567"
 GATEWAY = "http://gateway.internal:4000/v1"
-SERVER = VisionConfig(timeout=7.0, concurrency=3)
+SERVER = VisionConfig(timeout=7.0, concurrency=3, max_tokens=1000)
 
 DEMO_HEADERS = ({"X-Demo-Code": DEMO_CODE}, {"X-Model-Preset": "demo", "X-Demo-Code": DEMO_CODE})
 
@@ -103,8 +103,20 @@ def test_the_preset_file_ships_inside_the_package():
         ([{"id": "A/b", "label": "A", "vision_model": "m", "base_url": "https://x/v1"}], "id"),
         ([{"id": "a", "label": "A", "base_url": "https://x/v1"}], "vision_model"),
         ([{"id": "a", "label": "A", "vision_model": "m", "base_url_env": "HOME"}], "base_url_env"),
+        (
+            [
+                {
+                    "id": "a",
+                    "label": "A",
+                    "vision_model": "m",
+                    "base_url": "https://x/v1",
+                    "max_tokens_param": "max_length",
+                }
+            ],
+            "max_tokens_param",
+        ),
     ],
-    ids=["no-url", "not-https", "duplicate", "bad-id", "no-model", "other-env"],
+    ids=["no-url", "not-https", "duplicate", "bad-id", "no-model", "other-env", "token-param"],
 )
 def test_a_bad_preset_file_is_refused(tmp_path, entries, message):
     path = tmp_path / "presets.json"
@@ -179,7 +191,17 @@ def test_a_preset_and_key_build_a_config_for_that_preset_only(preset_id):
     assert config.default_model == model
     assert config.allowed_models == (model,)
     assert (config.timeout, config.concurrency) == (SERVER.timeout, SERVER.concurrency)
+    assert config.max_tokens == SERVER.max_tokens
     assert not config.fallback_to_tesseract
+
+
+@pytest.mark.parametrize("preset_id", sorted(TABLE))
+def test_each_preset_caps_the_answer_with_the_field_its_provider_reads(preset_id):
+    config = _config({"X-Model-Preset": preset_id, "X-Model-Key": FAKE_KEY})
+
+    # OpenAI's GPT-5 models refuse `max_tokens` and read `max_completion_tokens` instead.
+    expected = "max_completion_tokens" if preset_id == "openai" else "max_tokens"
+    assert config.max_tokens_param == expected
 
 
 def test_the_preset_id_is_matched_without_case_or_spaces():
