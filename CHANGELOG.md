@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+## 1.1.1 (2026-11-20)
+
 ### Fixed
 
 - Vision reads took up to six times as long as the provider takes for the same page: a page read on the Synthetic preset ran past 180 seconds and failed, and the demo code took 179 seconds, where the same model answers in 27 to 49 seconds when asked directly. The request set no cap on the answer and sent `temperature: 0`, and greedy decoding sends thinking models such as Qwen3 and GLM into long repetition. The service now sends no temperature (the provider's default sampling is used) and caps each page's answer with the new `OCR_LLM_MAX_TOKENS` setting (default 4096), as `max_tokens`, or `max_completion_tokens` for the OpenAI preset, whose GPT-5 models read only that. An answer cut off at the cap fails the page (`vision_failed`, "the vision model's answer ran too long for one page; try again") instead of returning a page with its end missing. The rendered page's longer side is capped at 2000 pixels, which leaves Letter and A4 at 150 DPI. Each vision read is logged with its time, image size, tokens in and out and finish reason, and the page route logs its render time.

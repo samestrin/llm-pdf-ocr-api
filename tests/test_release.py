@@ -104,9 +104,17 @@ def test_changelog_top_released_version_is_pyproject_version():
     assert "Unreleased" in sections
     top = [h for h in sections if h != "Unreleased"][0]
     assert re.fullmatch(rf"{re.escape(VERSION)} \(\d{{4}}-\d{{2}}-\d{{2}}\)", top)
-    assert "Pages that need vision" in sections[top]
-    assert "Web page: a page marked as needing vision" in sections[top]
-    assert "Public demo" in sections[top]
+    assert "`OCR_LLM_MAX_TOKENS`" in sections[top]
+
+
+def test_changelog_has_a_1_1_0_section_with_its_entries():
+    # The 1.1.0 release is history: its section keeps its date and entries untouched.
+    sections = changelog_sections()
+    heading = "1.1.0 (2026-11-18)"
+    assert heading in sections
+    assert "Pages that need vision" in sections[heading]
+    assert "Web page: a page marked as needing vision" in sections[heading]
+    assert "Public demo" in sections[heading]
 
 
 def test_changelog_has_a_1_0_1_section_with_its_entries():
