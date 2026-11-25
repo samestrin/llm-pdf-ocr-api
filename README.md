@@ -9,6 +9,10 @@
 
 A small self-hosted FastAPI service, for anyone who needs the text out of PDFs, that reads a PDF page by page, scanned or not, and returns Markdown or JSON that says how each page was read.
 
+Live demo: https://ocr.samestrin.com
+
+**Try it:** bring your own API key from OpenAI, OpenRouter, Synthetic or Alibaba (DashScope), or [ask me for a demo code](https://estringroup.co/#contact).
+
 <p>
   <a href="https://github.com/samestrin/llm-pdf-ocr-api/actions/workflows/ci.yml"><img src="https://github.com/samestrin/llm-pdf-ocr-api/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/samestrin/llm-pdf-ocr-api/releases/latest"><img src="https://img.shields.io/github/v/release/samestrin/llm-pdf-ocr-api" alt="Latest release"></a>

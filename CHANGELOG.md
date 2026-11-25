@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
+### Changed
+
+- The README links the live demo at https://ocr.samestrin.com and says how to try its vision reads: with your own OpenAI, OpenRouter, Synthetic or Alibaba (DashScope) key, or a demo code.
+
 ## 1.1.2 (2026-11-20)
 
 ### Fixed
