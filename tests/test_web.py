@@ -14,7 +14,8 @@ WEB = Path(__file__).resolve().parents[1] / "src" / "llm_pdf_ocr" / "web"
 
 
 def _assets(html: str) -> list[str]:
-    return re.findall(r'(?:src|href)="([^"]+)"', html)
+    # A fragment such as the skip link's "#main-content" is a place on the page, not a file.
+    return re.findall(r'(?:src|href)="([^"#][^"]*)"', html)
 
 
 def test_page_is_served_at_root():

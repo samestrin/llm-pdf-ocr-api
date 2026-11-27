@@ -458,7 +458,7 @@ def test_a_network_failure_shows_a_plain_message(live_server, page, path):
 
 
 def _tab_to(page, element_id: str) -> None:
-    for _ in range(20):
+    for _ in range(30):  # a whole lap of the page: the header alone has six stops
         page.keyboard.press("Tab")
         if page.evaluate("document.activeElement.id") == element_id:
             return
@@ -524,11 +524,12 @@ def test_every_control_has_an_accessible_name(live_server, page):
     controls = page.locator("input, select, button")
     ids = [controls.nth(n).get_attribute("id") for n in range(controls.count())]
     key = {"key-preset", "key-input", "key-remember", "key-clear"}
-    assert set(ids) == CONTROLS | key | {"menu-toggle", "model", "find-input", "find-prev", "find-next"}
+    find = {"find-input", "find-prev", "find-next"}
+    assert set(ids) == CONTROLS | key | find | {"menu-toggle", "model"}
     page.locator("#key-panel summary").click()
+    # The menu button shows only below 48rem; its name is checked at 375 px.
     names = {
         "theme-toggle": "Light theme" if page.evaluate(_DARK) else "Dark theme",
-        "menu-toggle": "Menu",
         "file": "PDF file",
         "sample": "Try a sample",
         "format": "Output",
@@ -682,9 +683,9 @@ def test_at_1600_px_the_content_is_76rem_wide_under_a_56_px_sticky_bar(live_serv
 
     left, width, _ = page.locator("#main-content > :first-child").evaluate(_BOX)
     assert width == 1216 and left == (1600 - 1216) / 2
-    bar_left, bar_width, bar_height = page.locator("header.app-bar").evaluate(_BOX)
-    assert (bar_left, bar_width, bar_height) == (0, 1600, 56)
-    assert page.locator("header.app-bar").evaluate("(h) => getComputedStyle(h).position") == "sticky"
+    bar = page.locator("header.app-bar")
+    assert bar.evaluate(_BOX) == [0, 1600, 56]
+    assert bar.evaluate("(h) => getComputedStyle(h).position") == "sticky"
     # The bar's own row lines up with the content below it.
     assert page.locator(".app-brand").evaluate(_BOX)[0] == left
     toggle = page.locator("#theme-toggle").evaluate(_BOX)
@@ -696,6 +697,11 @@ def test_at_1600_px_the_content_is_76rem_wide_under_a_56_px_sticky_bar(live_serv
     expect(nav.get_by_role("link", name="Extract")).to_have_attribute("aria-current", "page")
     expect(nav.get_by_role("link", name="API reference")).to_have_attribute("href", "/docs")
     expect(page.locator("#menu-toggle")).to_be_hidden()
+    page.keyboard.press("Tab")  # the skip link
+    for name in ("PDF OCR", "Extract", "API reference"):  # each link in the bar shows a ring
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.textContent.trim()") == name
+        assert page.evaluate(_RING)["style"] not in ("none", "auto")
 
     page.set_viewport_size({"width": 1600, "height": 400})  # short enough to scroll
     page.evaluate("window.scrollTo(0, 300)")
@@ -716,7 +722,7 @@ def test_the_page_is_skip_link_header_main_and_footer_in_a_full_height_column(li
               + (el.className ? "." + el.className.split(" ")[0] : "")),
             display: style.display,
             direction: style.flexDirection,
-            minHeight: style.minHeight,
+            minHeight: style.minHeight === innerHeight + "px",
             height: column.getBoundingClientRect().height,
             grow: getComputedStyle(main).flexGrow,
             tabindex: main.getAttribute("tabindex"),
@@ -725,7 +731,7 @@ def test_the_page_is_skip_link_header_main_and_footer_in_a_full_height_column(li
     )
     assert shell["children"] == ["a.skip-link", "header.app-bar", "main", "footer.app-footer"]
     assert (shell["display"], shell["direction"]) == ("flex", "column")
-    assert shell["minHeight"] == "100vh" and shell["height"] >= 720
+    assert shell["minHeight"] and shell["height"] >= 720  # 100vh
     assert shell["grow"] == "1" and shell["tabindex"] == "-1"
 
     first = page.locator("#main-content > :first-child")
