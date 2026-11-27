@@ -160,8 +160,11 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# private plans (samestrin/llm-pdf-ocr-api-planning)
-.planning/
+# private plans (samestrin/llm-pdf-ocr-api-planning); track only the debt list
+.planning/*
+!.planning/technical-debt/
+.planning/technical-debt/*
+!.planning/technical-debt/README.md
 
 # the demo GIF's frames: docs/make_demo_gif.py writes them, only the GIF is committed
 docs/demo-frame-*.png
