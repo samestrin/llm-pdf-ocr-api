@@ -4,10 +4,6 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ## Unreleased
 
-### Added
-
-- `GET /LICENSE` serves the repo's MIT license as `text/plain` (200, same origin, no redirect). The `LICENSE` file now ships inside the wheel (`llm_pdf_ocr/LICENSE`) and the Docker image and is served from there, not only from a source checkout; it stays up when `OCR_WEB_PAGE=false`, so the notice travels with an API-only deployment too.
-
 ### Fixed
 
 - A demo code whose budget was spent was shown as a transient rate limit ("the provider is limiting requests for this key; try again in a minute"), so a visitor kept retrying a dead code. The demo gateway (litellm) answers HTTP 429 both for a spent budget and for an rpm/tpm limit; a vision read with a demo code now tells the two apart by litellm's budget markers (the `budget_exceeded` error type, or "Budget has been exceeded" in the message, case-insensitive). A spent budget is answered "this demo code is used up or expired"; an rpm/tpm limit keeps the rate-limited wording, and a numeric `Retry-After` from the provider is passed through as a response header. The gateway's error body is never shown or logged, and reads with a visitor's own key or the operator's own backend are unchanged.
