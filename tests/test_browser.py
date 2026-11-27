@@ -1542,7 +1542,7 @@ def test_the_key_panel_is_open_above_the_form_with_its_controls_in_a_row(live_se
         page.locator(s).bounding_box()
         for s in ("#key-preset", "#key-input", "label:has(#key-remember)", "#key-clear")
     ]
-    for left, right in zip(boxes, boxes[1:]):
+    for left, right in zip(boxes[:-1], boxes[1:], strict=True):
         assert left["x"] + left["width"] <= right["x"], (left, right)
         assert right["y"] < left["y"] + left["height"] and left["y"] < right["y"] + right["height"]
 
@@ -1558,9 +1558,10 @@ def test_below_48rem_the_key_panels_controls_stack_in_order(live_server, page, w
         page.locator(s).bounding_box()
         for s in ("#notice", "#key-preset", "#key-input", "label:has(#key-remember)", "#key-clear")
     ]
-    for above, below in zip(boxes, boxes[1:]):
+    for above, below in zip(boxes[:-1], boxes[1:], strict=True):
         assert above["y"] + above["height"] <= below["y"], (above, below)
-    assert page.locator("#key-panel").bounding_box()["y"] < page.locator("#extract").bounding_box()["y"]
+    panel, form = (page.locator(s).bounding_box() for s in ("#key-panel", "#extract"))
+    assert panel["y"] < form["y"]
 
 
 def test_a_server_that_is_not_a_public_demo_shows_no_panel_and_no_read_button(
