@@ -148,7 +148,15 @@
     </main>
 
     <footer class="app-footer">
-      <p>LLM PDF OCR {{version}}. MIT license. The HTTP API is at /v1/extract and /v1/jobs; see the <a href="/docs">API reference</a>.</p>
+      <div class="app-footer-row">
+        <p class="footer-copy">© 2024–{{year}} Sam Estrin · MIT License</p>
+        <nav aria-label="Footer">
+          <ul class="footer-links">
+            <li><a href="/docs">API</a></li>
+            <li>v{{version}}</li>
+          </ul>
+        </nav>
+      </div>
     </footer>
   </div>
 </body>
