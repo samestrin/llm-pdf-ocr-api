@@ -510,6 +510,7 @@ def test_every_control_has_an_accessible_name(live_server, page):
                 "methods": ["auto", "text_layer", "tesseract", "vision"],
                 "models": ["m-one"],
                 "presets": PRESETS,
+                "notice": NOTICE,  # a public demo: the key panel is shown
             }
         ),
     )
@@ -526,7 +527,6 @@ def test_every_control_has_an_accessible_name(live_server, page):
     key = {"key-preset", "key-input", "key-remember", "key-clear"}
     find = {"find-input", "find-prev", "find-next"}
     assert set(ids) == CONTROLS | key | find | {"menu-toggle", "model"}
-    page.locator("#key-panel summary").click()
     # The menu button shows only below 48rem; its name is checked at 375 px.
     names = {
         "theme-toggle": "Light theme" if page.evaluate(_DARK) else "Dark theme",
@@ -1383,7 +1383,8 @@ PRESETS = [
 ]
 
 
-def _capabilities(page, demo_available: bool = False, notice: str | None = None) -> None:
+def _capabilities(page, demo_available: bool = False, notice: str | None = NOTICE) -> None:
+    """A public demo's capabilities: its notice, and demo codes when `demo_available`."""
     caps = {
         "methods": ["auto", "text_layer", "tesseract"],
         "models": [],
@@ -1469,22 +1470,119 @@ def _stored(page) -> dict:
     )
 
 
-def test_the_notice_is_in_the_header_as_plain_text(live_server, page, dialogs):
-    _capabilities(page, notice=NOTICE)
+def test_the_notice_is_the_key_panels_first_muted_line_as_plain_text(live_server, page, dialogs):
+    _capabilities(page)
     page.goto(live_server + "/")
 
-    notice = page.locator("header #notice")
+    notice = page.locator('section[aria-label="Model access"] > #notice')
     expect(notice).to_be_visible()
     expect(notice).to_have_text(NOTICE)
-    assert page.locator("header img").count() == 0
+    first = page.evaluate(
+        "() => [...document.querySelector('#key-panel').children].find((c) => !c.hidden).id"
+    )
+    assert first == "notice"
+    style = page.evaluate(
+        """() => {
+          const s = getComputedStyle(document.querySelector("#notice"));
+          const probe = document.createElement("span");
+          probe.style.color = "var(--color-muted)";
+          probe.style.fontSize = "var(--text-sm)";
+          document.body.append(probe);
+          const want = getComputedStyle(probe);
+          const out = {
+            color: s.color === want.color,
+            size: s.fontSize === want.fontSize,
+            border: s.borderLeftWidth,
+            background: s.backgroundColor,
+          };
+          probe.remove();
+          return out;
+        }"""
+    )
+    # A muted --text-sm line, not the old bar with its violet edge.
+    assert style == {
+        "color": True,
+        "size": True,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)",
+    }, style
+    assert page.locator("header #notice, header .notice").count() == 0
+    assert page.locator("#key-panel img").count() == 0
     assert dialogs == []
 
 
 def test_no_notice_shows_nothing(live_server, page):
-    _capabilities(page)
+    _capabilities(page, demo_available=True, notice=None)
     page.goto(live_server + "/")
     expect(page.locator("#key-panel")).to_be_visible()  # capabilities have been applied
     expect(page.locator("#notice")).to_be_hidden()
+
+
+def test_the_key_panel_is_open_above_the_form_with_its_controls_in_a_row(live_server, page):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    _capabilities(page, demo_available=True)
+    page.goto(live_server + "/")
+
+    panel = page.locator('main section[aria-label="Model access"]')
+    expect(panel).to_be_visible()
+    expect(panel).to_have_id("key-panel")
+    assert page.locator("details, summary").count() == 0
+    for selector in ("#key-preset", "#key-input", "#key-remember", "#key-clear"):
+        expect(panel.locator(selector)).to_be_visible()  # open, nothing to expand
+
+    # Above the extract form and the results, across the content width.
+    panel_box = panel.bounding_box()
+    form_box = page.locator("#extract").bounding_box()
+    layout_box = page.locator(".app-layout").bounding_box()
+    assert panel_box["y"] + panel_box["height"] <= form_box["y"]
+    assert abs(panel_box["width"] - layout_box["width"]) < 1
+
+    # Provider, demo code / key, Remember, Clear: left to right on one row.
+    boxes = [
+        page.locator(s).bounding_box()
+        for s in ("#key-preset", "#key-input", "label:has(#key-remember)", "#key-clear")
+    ]
+    for left, right in zip(boxes, boxes[1:]):
+        assert left["x"] + left["width"] <= right["x"], (left, right)
+        assert right["y"] < left["y"] + left["height"] and left["y"] < right["y"] + right["height"]
+
+
+@pytest.mark.parametrize("width", [375, 767])
+def test_below_48rem_the_key_panels_controls_stack_in_order(live_server, page, width):
+    page.set_viewport_size({"width": width, "height": 900})
+    _capabilities(page, demo_available=True)
+    page.goto(live_server + "/")
+    expect(page.locator("#key-panel")).to_be_visible()
+
+    boxes = [
+        page.locator(s).bounding_box()
+        for s in ("#notice", "#key-preset", "#key-input", "label:has(#key-remember)", "#key-clear")
+    ]
+    for above, below in zip(boxes, boxes[1:]):
+        assert above["y"] + above["height"] <= below["y"], (above, below)
+    assert page.locator("#key-panel").bounding_box()["y"] < page.locator("#extract").bounding_box()["y"]
+
+
+def test_a_server_that_is_not_a_public_demo_shows_no_panel_and_no_read_button(
+    live_server, page, fresh_jobs
+):
+    _capabilities(page, demo_available=False, notice=None)
+    _first_poll(
+        page,
+        {
+            "status": "done",
+            "pages_total": 2,
+            "pages_done": 2,
+            "result": json.loads(render_json(_marked_doc())),
+            "error": None,
+        },
+    )
+    _extract(page, live_server, _pdf(PAGE_ONE, PAGE_TWO), method="auto")
+    _done(page)
+
+    expect(page.locator("#key-panel")).to_be_hidden()
+    expect(page.locator(".needs-vision")).to_have_text(f"Needs a vision model: {REASON}")
+    expect(page.locator(".read-vision")).to_be_hidden()
 
 
 def test_the_provider_list_comes_from_capabilities_and_demo_only_when_available(live_server, page):
@@ -1502,7 +1600,6 @@ def test_the_provider_list_comes_from_capabilities_and_demo_only_when_available(
     )
     expect(page.locator("#key-preset")).to_have_value("demo")  # the demo, when there is one
     expect(page.locator("#key-label")).to_have_text("Demo code")
-    page.locator("#key-panel summary").click()
     page.select_option("#key-preset", "openai")
     expect(page.locator("#key-label")).to_have_text("API key")
 
@@ -1533,7 +1630,6 @@ def test_without_presets_there_is_no_panel_and_no_read_button(live_server, page,
 def test_the_key_is_kept_in_session_storage_by_default(live_server, page):
     _capabilities(page)
     page.goto(live_server + "/")
-    page.locator("#key-panel summary").click()
     page.select_option("#key-preset", "openrouter")
     page.fill("#key-input", KEY)
 
@@ -1551,7 +1647,6 @@ def test_the_key_is_kept_in_session_storage_by_default(live_server, page):
 def test_remember_on_this_device_moves_the_key_to_local_storage(live_server, page):
     _capabilities(page)
     page.goto(live_server + "/")
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
     page.check("#key-remember")
 
@@ -1563,7 +1658,6 @@ def test_remember_on_this_device_moves_the_key_to_local_storage(live_server, pag
     page.reload()
     expect(page.locator("#key-input")).to_have_value(KEY)
     expect(page.locator("#key-remember")).to_be_checked()
-    page.locator("#key-panel summary").click()
 
     page.uncheck("#key-remember")
     stored = _stored(page)
@@ -1574,7 +1668,6 @@ def test_remember_on_this_device_moves_the_key_to_local_storage(live_server, pag
 def test_each_provider_keeps_its_own_key_and_never_gets_another(live_server, page, fresh_jobs):
     _marked_result(page, live_server, demo_available=True)
     reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
-    page.locator("#key-panel summary").click()
     page.select_option("#key-preset", "openai")
     page.fill("#key-input", KEY)
 
@@ -1610,7 +1703,6 @@ def test_each_provider_keeps_its_own_key_and_never_gets_another(live_server, pag
 def test_stored_keys_come_back_per_provider_after_a_reload(live_server, page):
     _capabilities(page, demo_available=True)
     page.goto(live_server + "/")
-    page.locator("#key-panel summary").click()
     page.select_option("#key-preset", "openrouter")
     page.fill("#key-input", KEY)
     page.select_option("#key-preset", "demo")
@@ -1620,7 +1712,6 @@ def test_stored_keys_come_back_per_provider_after_a_reload(live_server, page):
     page.reload()
     expect(page.locator("#key-preset")).to_have_value("openrouter")
     expect(page.locator("#key-input")).to_have_value(KEY)
-    page.locator("#key-panel summary").click()
     page.select_option("#key-preset", "demo")
     expect(page.locator("#key-input")).to_have_value(DEMO_CODE)
 
@@ -1629,7 +1720,6 @@ def test_stored_keys_come_back_per_provider_after_a_reload(live_server, page):
 def test_clear_removes_the_key_from_storage_and_the_field(live_server, page, remember):
     _capabilities(page)
     page.goto(live_server + "/")
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
     if remember:
         page.check("#key-remember")
@@ -1657,14 +1747,13 @@ def test_a_marked_page_says_why_and_the_markdown_matches_the_api(live_server, pa
     assert page.locator("#result").text_content() == render_markdown(_marked_doc())
 
 
-def test_read_without_a_key_opens_the_panel_and_sends_nothing(live_server, page, fresh_jobs):
+def test_read_without_a_key_focuses_the_key_field_and_sends_nothing(live_server, page, fresh_jobs):
     _marked_result(page, live_server)
     reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
-    expect(page.locator("#key-panel")).not_to_have_attribute("open", "")
+    expect(page.locator("#key-input")).to_be_visible()  # the panel is always open
 
     page.click(".read-vision")
 
-    expect(page.locator("#key-panel")).to_have_attribute("open", "")
     expect(page.locator("#key-input")).to_be_focused()
     expect(page.locator("#status")).to_have_text(
         "Enter an API key, then press Read with a vision model again."
@@ -1679,7 +1768,6 @@ def test_the_key_leaves_the_page_only_in_the_header_of_the_vision_read(
     page.on("request", lambda request: log.append(request))
     _marked_result(page, live_server)
     reads = _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
 
     page.click(".read-vision")
@@ -1737,7 +1825,6 @@ def test_the_button_reads_the_page_and_shows_its_method_and_model(
 ):
     _marked_result(page, live_server, fmt=fmt)
     _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
 
     page.click(".read-vision")
@@ -1772,7 +1859,6 @@ def test_find_covers_the_page_a_vision_read_replaced(live_server, page, fresh_jo
     _vision_route(page, lambda route: route.fulfill(json=_vision_page()))
     page.fill("#find-input", "vision model read")
     expect(page.locator("#find-count")).to_have_text("No matches")
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
 
     page.click(".read-vision")
@@ -1795,7 +1881,6 @@ def test_a_provider_error_is_shown_and_the_page_can_be_tried_again(live_server, 
         lambda r: r.fulfill(json=_vision_page()),
     ]
     reads = _vision_route(page, lambda route: answers[len(reads) - 1](route))
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
 
     page.click(".read-vision")
@@ -1816,7 +1901,6 @@ def test_the_button_is_disabled_while_its_page_is_read(live_server, page, fresh_
     _marked_result(page, live_server)
     held = []
     _vision_route(page, held.append)
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
 
     page.click(".read-vision")
@@ -1830,7 +1914,6 @@ def test_a_read_that_ends_after_a_new_job_started_changes_nothing(live_server, p
     _marked_result(page, live_server)
     held = []
     _vision_route(page, held.append)
-    page.locator("#key-panel summary").click()
     page.fill("#key-input", KEY)
     page.click(".read-vision")
     expect(page.locator(".read-vision")).to_be_disabled()
@@ -1851,7 +1934,6 @@ def test_the_key_panel_and_read_button_take_a_focus_ring_and_meet_wcag_aa(
 ):
     page.emulate_media(color_scheme=scheme)
     _marked_result(page, live_server, notice=NOTICE, demo_available=True)
-    page.locator("#key-panel summary").click()
 
     seen = page.evaluate(_CONTRAST, "select, #key-input")
     whats = {s["what"] for s in seen}
@@ -1859,7 +1941,7 @@ def test_the_key_panel_and_read_button_take_a_focus_ring_and_meet_wcag_aa(
     low = [s for s in seen if s["ratio"] < 4.5]
     assert low == [], low
 
-    page.locator("#key-panel summary").focus()
+    page.locator("#main-content").focus()  # the panel comes first in main
     for selector in ("#key-preset", "#key-input", "#key-remember", "#key-clear", ".read-vision"):
         for _ in range(30):
             page.keyboard.press("Tab")
@@ -1878,7 +1960,6 @@ def test_the_key_panel_and_read_button_take_a_focus_ring_and_meet_wcag_aa(
 def test_the_notice_panel_and_marked_page_fit_at_phone_width(live_server, page, width, fresh_jobs):
     page.set_viewport_size({"width": width, "height": 800})
     _marked_result(page, live_server, notice=NOTICE + " " + "x" * 200, demo_available=True)
-    page.locator("#key-panel summary").click()
 
     widths = page.evaluate(_WIDTHS)
     assert widths[0] <= widths[1] == width
