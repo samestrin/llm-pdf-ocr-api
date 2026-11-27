@@ -38,6 +38,11 @@ A visitor's own key or demo code arrives in request headers and is read only by 
 routes that take `RequestVision` (the page route above); `/v1/extract` and `/v1/jobs` use
 the server's own vision config and ignore those headers.
 
+`GET /LICENSE` serves the repo's MIT license as `text/plain`, same origin and without
+a redirect, for the footer's `MIT License` link. The file ships inside the package
+(`llm_pdf_ocr/LICENSE` in the wheel); a source checkout reads the repo root copy. It
+stays up when `OCR_WEB_PAGE=false`: the notice travels with an API-only deployment too.
+
 `GET /docs` is the API reference: Scalar, vendored in `llm_pdf_ocr/web/scalar/` at a
 pinned version, reading this service's own `/openapi.json`. It loads nothing from
 another origin -- no request proxy, no web fonts, no telemetry -- so it works offline,
@@ -426,6 +431,21 @@ def api_reference(request: Request) -> HTMLResponse:
         html.replace("{{configuration}}", configuration),
         headers={"Content-Security-Policy": DOCS_CSP},
     )
+
+
+def _license_file(package_dir: Path) -> Path:
+    """The repo LICENSE: the copy shipped inside the package, else the checkout's root copy."""
+    shipped = package_dir / "LICENSE"
+    if shipped.is_file():
+        return shipped
+    return package_dir.parents[1] / "LICENSE"
+
+
+@app.get("/LICENSE", include_in_schema=False)
+def license_text() -> Response:
+    """The repo's MIT license as plain text, for the footer's `MIT License` link."""
+    text = _license_file(Path(__file__).parent).read_text(encoding="utf-8")
+    return Response(text, media_type="text/plain; charset=utf-8")
 
 
 @app.get("/v1/capabilities", response_model=Capabilities)

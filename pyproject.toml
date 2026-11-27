@@ -30,6 +30,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/llm_pdf_ocr"]
 
+# The repo LICENSE ships inside the package so the wheel (and the image built from it)
+# can serve it at GET /LICENSE; a source checkout reads the repo root copy instead.
+[tool.hatch.build.targets.wheel.force-include]
+"LICENSE" = "llm_pdf_ocr/LICENSE"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
