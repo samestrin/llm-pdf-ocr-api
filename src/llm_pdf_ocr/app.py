@@ -654,6 +654,7 @@ def get_page_image(request: Request, job_id: str, number: int) -> Response:
 # error text is never passed on: it may echo the key.
 _PLAIN_VISION_ERRORS = {
     "rate_limited": "the provider is limiting requests for this key; try again in a minute",
+    "demo_exhausted": "this demo code is used up or expired",
     "timeout": "the vision model took too long to answer; try again",
     "unreachable": "the provider could not be reached; try again later",
     "bad_response": "the vision model sent back no text for this page",
@@ -741,7 +742,10 @@ def read_page_with_vision(
             log.info("page %d: rendered for vision in %.2fs", number, time.monotonic() - started)
             read = vision_model.read_image(png, number, vision)
         except vision_model.VisionError as exc:
-            return _error("vision_failed", _plain_vision_error(exc), 502)
+            response = _error("vision_failed", _plain_vision_error(exc), 502)
+            if exc.retry_after is not None:  # a numeric Retry-After, already checked
+                response.headers["Retry-After"] = exc.retry_after
+            return response
         except Exception as exc:  # the message stays generic
             log.error("page %d: could not be read with vision: %s", number, type(exc).__name__)
             return _error(

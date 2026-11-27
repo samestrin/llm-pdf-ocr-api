@@ -9,6 +9,7 @@ demo code, and the result for that page is replaced. Tests use the bundled scann
 
 import base64
 import json
+import logging
 import shutil
 import struct
 import threading
@@ -21,12 +22,25 @@ import pytest
 from fastapi.testclient import TestClient
 from test_extract import JSON_SCHEMA
 from test_openapi_responses import check, resolve, schema
-from test_presets import FAKE_KEY, fake_provider  # noqa: F401  (fixture)
-from test_vision import MODEL, completion
+from test_presets import DEMO_CODE, FAKE_KEY, fake_provider  # noqa: F401  (fixture)
+from test_vision import (
+    LITELLM_BUDGET_MESSAGE,
+    LITELLM_BUDGET_TYPE,
+    LITELLM_RPM,
+    LITELLM_TPM,
+    MODEL,
+    FakeServer,
+    completion,
+)
 
 from llm_pdf_ocr import extract, vision
-from llm_pdf_ocr.app import app
-from llm_pdf_ocr.config import DEFAULT_LOW_CONFIDENCE, ConfigError, load_limits
+from llm_pdf_ocr.app import app, get_public_demo_config
+from llm_pdf_ocr.config import (
+    DEFAULT_LOW_CONFIDENCE,
+    ConfigError,
+    PublicDemoConfig,
+    load_limits,
+)
 from llm_pdf_ocr.extract import (
     ErrorCode,
     Method,
@@ -596,3 +610,87 @@ def test_a_job_that_expires_while_the_page_is_read_is_404(marked, store, clock, 
     assert job.result is None  # nothing was written into the expired job
     assert job.pages[SCAN] == "ok"  # the job's progress kept what the job itself reported
     assert job.reading == set()
+
+
+# --- a demo code's spent budget is not a transient rate limit -------------------------
+
+DEMO = {"X-Demo-Code": DEMO_CODE}
+
+
+@pytest.fixture
+def fake_gateway():
+    """A fake litellm gateway standing in for DEMO_GATEWAY_URL."""
+    server = FakeServer()
+    server.thread.start()
+    app.dependency_overrides[get_public_demo_config] = lambda: PublicDemoConfig(
+        gateway_url=server.base_url
+    )
+    yield server
+    del app.dependency_overrides[get_public_demo_config]
+    server.httpd.shutdown()
+    server.httpd.server_close()
+
+
+@pytest.mark.parametrize(
+    "payload", [LITELLM_BUDGET_TYPE, LITELLM_BUDGET_MESSAGE], ids=["type-marker", "message-marker"]
+)
+def test_a_spent_demo_budget_is_used_up_not_rate_limited(marked, fake_gateway, caplog, payload):
+    caplog.set_level(logging.DEBUG)
+    fake_gateway.reply = lambda body: (429, payload, {"Retry-After": "12"})
+
+    response = read_with_vision(marked, headers=DEMO)
+
+    assert response.status_code == 502
+    assert response.json()["error"] == {
+        "code": "vision_failed",
+        "message": "this demo code is used up or expired",
+        "request_id": response.headers["x-request-id"],
+    }
+    assert "retry-after" not in response.headers  # a spent budget is not retried
+    assert DEMO_CODE not in response.text and DEMO_CODE not in caplog.text
+    assert "Budget has been exceeded" not in response.text
+    assert "Budget has been exceeded" not in caplog.text
+    page = client.get(f"/v1/jobs/{marked}").json()["result"]["pages"][0]
+    assert page["needs_vision"] is True  # the page stays marked
+
+
+@pytest.mark.parametrize("payload", [LITELLM_RPM, LITELLM_TPM], ids=["rpm", "tpm"])
+def test_a_demo_rate_limit_keeps_its_wording_and_retry_after(marked, fake_gateway, payload):
+    fake_gateway.reply = lambda body: (429, payload, {"Retry-After": "12"})
+
+    response = read_with_vision(marked, headers=DEMO)
+
+    assert response.status_code == 502
+    error = response.json()["error"]
+    assert (error["code"], error["message"]) == (
+        "vision_failed",
+        "the provider is limiting requests for this key; try again in a minute",
+    )
+    assert response.headers["retry-after"] == "12"
+
+
+def test_a_demo_rate_limit_drops_a_non_numeric_retry_after(marked, fake_gateway):
+    fake_gateway.reply = lambda body: (
+        429,
+        LITELLM_RPM,
+        {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+    )
+
+    response = read_with_vision(marked, headers=DEMO)
+
+    assert response.status_code == 502
+    assert "retry-after" not in response.headers
+
+
+def test_a_non_demo_budget_429_is_unchanged(marked, fake_provider):  # noqa: F811
+    fake_provider.reply = lambda body: (429, LITELLM_BUDGET_TYPE)
+
+    response = read_with_vision(marked)  # the openai preset with the visitor's own key
+
+    assert response.status_code == 502
+    error = response.json()["error"]
+    assert (error["code"], error["message"]) == (
+        "vision_failed",
+        "the provider is limiting requests for this key; try again in a minute",
+    )
+    assert "retry-after" not in response.headers

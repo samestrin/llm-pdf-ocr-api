@@ -179,6 +179,7 @@ def test_a_bad_gateway_stops_the_service_at_start(monkeypatch):
 def test_no_credentials_keeps_the_servers_own_config():
     assert _config({}) is SERVER
     assert not _config({}).enabled
+    assert not _config({}).demo
 
 
 @pytest.mark.parametrize("preset_id", sorted(TABLE))
@@ -193,6 +194,7 @@ def test_a_preset_and_key_build_a_config_for_that_preset_only(preset_id):
     assert (config.timeout, config.concurrency) == (SERVER.timeout, SERVER.concurrency)
     assert config.max_tokens == SERVER.max_tokens
     assert not config.fallback_to_tesseract
+    assert config.demo is False
 
 
 @pytest.mark.parametrize("preset_id", sorted(TABLE))
@@ -220,6 +222,7 @@ def test_a_demo_code_reaches_the_gateway():
         assert config.base_url == GATEWAY
         assert config.api_key == DEMO_CODE
         assert config.default_model == model
+        assert config.demo is True
 
 
 def _refused(headers, demo=NO_DEMO) -> CredentialsError:

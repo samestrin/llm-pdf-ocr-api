@@ -72,6 +72,9 @@ class VisionConfig:
     # `max_completion_tokens`.
     max_tokens_param: str = "max_tokens"
     fallback_to_tesseract: bool = False
+    # True when the key is a demo code for the demo gateway: its 429 may name a spent
+    # budget, which is not a transient rate limit.
+    demo: bool = False
 
     @property
     def enabled(self) -> bool:

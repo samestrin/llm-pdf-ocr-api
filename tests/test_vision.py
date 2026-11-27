@@ -1,9 +1,11 @@
 import base64
+import http.client
 import json
 import logging
 import threading
 import time
 import urllib.error
+from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pymupdf
@@ -483,6 +485,247 @@ def test_log_lines_never_contain_the_key_or_base_url(server, caplog):
     assert any(r.name == "llm_pdf_ocr.vision" for r in caplog.records)
     for record in caplog.records:
         assert_no_secrets(record.getMessage(), server)
+
+
+# A demo code's spent budget is not a transient rate limit
+
+# litellm answers 429 both for a spent budget and for an rpm/tpm limit. These are the
+# shapes it sends: only the budget markers tell the two apart.
+LITELLM_BUDGET_TYPE = {
+    "error": {
+        "message": "Budget has been exceeded! Current cost: 1.0001, Max budget: 1.0",
+        "type": "budget_exceeded",
+        "param": None,
+        "code": "429",
+    }
+}
+LITELLM_BUDGET_MESSAGE = {
+    "error": {
+        "message": "Budget has been exceeded! Current cost: 0.25, Max budget: 0.25",
+        "type": None,
+        "param": None,
+        "code": "429",
+    }
+}
+LITELLM_RPM = {
+    "error": {
+        "message": (
+            "Rate limit reached for demo-vision in organization org-123 on requests per min "
+            "(rpm): Limit 5, Used 5. Please try again in 12s."
+        ),
+        "type": "rate_limit_exceeded",
+        "param": None,
+        "code": "rate_limit_exceeded",
+    }
+}
+LITELLM_TPM = {
+    "error": {
+        "message": (
+            "Rate limit reached for demo-vision in organization org-123 on tokens per min "
+            "(tpm): Limit 10000, Used 10000. Please try again in 6s."
+        ),
+        "type": "rate_limit_exceeded",
+        "param": None,
+        "code": "rate_limit_exceeded",
+    }
+}
+LITELLM_ROUTER_RPM = {
+    "error": {
+        "message": (
+            "No deployments available for selected model, Try again in 60 seconds. "
+            "Passed model=demo-vision. rpm limit: 5"
+        ),
+        "type": "rate_limit_exceeded",
+        "param": None,
+        "code": "429",
+    }
+}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        LITELLM_BUDGET_TYPE,
+        LITELLM_BUDGET_MESSAGE,
+        {"error": {"type": "Budget_Exceeded", "message": "whatever"}},
+        {"error": {"message": "BUDGET HAS BEEN EXCEEDED for this key"}},
+    ],
+    ids=["type-marker", "message-marker", "type-case", "message-case"],
+)
+def test_a_demo_codes_spent_budget_is_used_up_not_rate_limited(server, payload):
+    server.reply = lambda body: (429, payload)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "demo_exhausted"
+    assert str(info.value) == "this demo code is used up or expired"
+    assert info.value.status == 429
+    assert info.value.retry_after is None
+    assert_no_secrets(str(info.value), server)
+    assert_no_secrets(repr(info.value), server)
+
+
+@pytest.mark.parametrize(
+    "payload", [LITELLM_RPM, LITELLM_TPM, LITELLM_ROUTER_RPM], ids=["rpm", "tpm", "router-rpm"]
+)
+def test_a_demo_codes_rpm_or_tpm_limit_stays_rate_limited(server, payload):
+    server.reply = lambda body: (429, payload)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+    assert str(info.value) == "the vision model is rate limited (HTTP 429)"
+
+
+@pytest.mark.parametrize("payload", [LITELLM_BUDGET_TYPE, LITELLM_BUDGET_MESSAGE])
+def test_a_non_demo_429_with_a_budget_body_is_unchanged(server, payload):
+    # The operator's own backend is not a demo code: a budget error there is still a 429.
+    server.reply = lambda body: (429, payload)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config())
+
+    assert info.value.code == "rate_limited"
+    assert str(info.value) == "the vision model is rate limited (HTTP 429)"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"<html>Bad Gateway</html>",
+        b"",
+        {"error": "Budget has been exceeded"},
+        {"error": {"message": "rate limited", "param": "budget_exceeded"}},
+        {"error": {"message": "rate limited", "type": "rate_limit_exceeded"}},
+        {"message": "Budget has been exceeded"},
+        [],
+    ],
+    ids=[
+        "not-json",
+        "empty",
+        "error-not-dict",
+        "marker-in-param",
+        "no-marker",
+        "top-level",
+        "list",
+    ],
+)
+def test_a_demo_429_without_budget_markers_stays_rate_limited(server, payload):
+    server.reply = lambda body: (429, payload)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+
+
+def test_a_budget_body_never_reaches_the_error_or_the_log(server, caplog):
+    caplog.set_level(logging.DEBUG)
+    payload = {
+        "error": {
+            "message": f"Budget has been exceeded! Current cost: 1.0, key {API_KEY}",
+            "type": "budget_exceeded",
+        }
+    }
+    server.reply = lambda body: (429, payload)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    for text in (str(info.value), repr(info.value), caplog.text):
+        assert_no_secrets(text, server)
+        assert "Current cost" not in text
+        assert "Budget has been exceeded" not in text
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("12", "12"),
+        ("0.5", "0.5"),
+        (" 7 ", "7"),
+        ("Wed, 21 Oct 2026 07:28:00 GMT", None),
+        (f"soon {API_KEY}", None),
+        ("", None),
+        ("-1", None),
+        ("1e3", None),
+        ("1234567", None),
+    ],
+    ids=[
+        "seconds",
+        "fractional",
+        "padded",
+        "http-date",
+        "text",
+        "empty",
+        "negative",
+        "exp",
+        "huge",
+    ],
+)
+def test_only_a_numeric_retry_after_is_passed_through(server, value, expected):
+    server.reply = lambda body: (429, LITELLM_RPM, {"Retry-After": value})
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+    assert info.value.retry_after == expected
+
+
+def test_a_non_demo_rate_limit_passes_a_numeric_retry_after_too(server):
+    server.reply = lambda body: (429, LITELLM_RPM, {"Retry-After": "12"})
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config())
+
+    assert info.value.code == "rate_limited"
+    assert info.value.retry_after == "12"
+
+
+def test_a_spent_budget_carries_no_retry_after_even_when_sent(server):
+    server.reply = lambda body: (429, LITELLM_BUDGET_TYPE, {"Retry-After": "12"})
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "demo_exhausted"
+    assert info.value.retry_after is None
+
+
+def test_a_demo_429_with_an_oversized_body_stays_rate_limited(server):
+    # Only the first 64 KiB of a body is read; a truncated JSON parses as no markers.
+    huge = {"error": {"type": "budget_exceeded", "message": "x" * 70000}}
+    server.reply = lambda body: (429, huge)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+
+
+def test_a_demo_429_whose_body_cannot_be_read_stays_rate_limited(server, monkeypatch):
+    class BrokenBody:
+        def read(self, amt=None):
+            raise http.client.IncompleteRead(b"partial")
+
+        def close(self):
+            pass
+
+    def urlopen(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            f"{server.base_url}/chat/completions", 429, "Too Many Requests", Message(), BrokenBody()
+        )
+
+    monkeypatch.setattr(vision._opener, "open", urlopen)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+    assert_no_secrets(str(info.value), server)
 
 
 # Several pages, in parallel

@@ -73,6 +73,8 @@ curl -X POST -H 'X-Model-Preset: openai' -H "X-Model-Key: $KEY" localhost:5000/v
 | 409 | `page_busy` | The page is being read by another request. |
 | 502 | `vision_failed` | The provider could not read the page; the message says why in plain words, such as `the provider did not accept the key`. The page stays marked and may be tried again. |
 
+A demo gateway (litellm) answers HTTP 429 both for a demo code whose budget is spent and for a momentary rpm/tpm limit. For a read with a demo code, the two are told apart by litellm's budget markers (the `budget_exceeded` error type, or "Budget has been exceeded" in the message): a spent budget is `this demo code is used up or expired`, and an rpm/tpm limit keeps `the provider is limiting requests for this key; try again in a minute`. The gateway's error body is never shown or logged. When a rate-limited read's provider sends a numeric `Retry-After` (seconds), the 502 response carries it as a `Retry-After` header; any other value is dropped. A read with a visitor's own key or the operator's backend is unchanged.
+
 ## Web page
 
 **Endpoint:** `/` **Method:** GET
