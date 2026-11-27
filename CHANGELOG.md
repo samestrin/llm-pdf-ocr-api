@@ -10,6 +10,7 @@ All notable changes to this project are recorded here. Add new entries under Unr
 
 ### Changed
 
+- Web page: the centred version line in the footer is replaced by the shared demo shell's footer links row: the copyright `© 2024–<year> Sam Estrin · MIT License` (the year filled in by the server, the licence as plain text) on the left, and a links row on the right with `API` at `/docs` and the version (`v<version>`) last, as text. Only pages the service already serves are linked, so there are no Privacy or Terms links and no external URL; below 48rem the row stacks into a centred column. The docs page has no footer.
 - The README links the live demo at https://ocr.samestrin.com and says how to try its vision reads: with your own OpenAI, OpenRouter, Synthetic or Alibaba (DashScope) key, or a demo code.
 
 ## 1.1.2 (2026-11-20)

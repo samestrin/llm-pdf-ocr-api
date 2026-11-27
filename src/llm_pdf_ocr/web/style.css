@@ -126,6 +126,7 @@ main {
 main {
   flex: 1;
   padding-top: var(--space-5);
+  padding-bottom: var(--space-4);
 }
 
 /* Main takes focus from the skip link, so the next Tab lands in the form. It is not a
@@ -895,14 +896,57 @@ pre {
   margin: 0 0 var(--space-3);
 }
 
-/* Footer */
+/* Footer: small muted text on the page background, under a hairline. The inner row
+   is --page-max wide like the bar and main: copyright left, links right from 48rem,
+   a centred column below it. */
 
 .app-footer {
-  margin-top: var(--space-6);
-  padding: 0 var(--space-4) var(--space-4);
+  border-top: 1px solid var(--color-border);
   color: var(--color-muted);
   font-size: var(--text-sm);
-  text-align: center;
+}
+
+.app-footer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(100%, calc(var(--page-max) + 2 * var(--space-4)));
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+.footer-copy {
+  margin: 0;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  column-gap: 1.25rem; /* the shell spec's footer links gap */
+  row-gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-footer a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+.app-footer a:hover {
+  color: var(--color-accent);
+}
+
+@media (max-width: 47.99rem) {
+  .app-footer-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
 }
 
 @media (max-width: 40rem) {

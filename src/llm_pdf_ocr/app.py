@@ -50,6 +50,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 from enum import StrEnum
 from functools import cache
 from html import escape as escape_html
@@ -408,6 +409,7 @@ def page(request: Request) -> HTMLResponse:
         "max_pages": str(state.limits.max_pages),
         "job_ttl": _duration(state.jobs.ttl),
         "version": __version__,
+        "year": str(date.today().year),
     }.items():
         html = html.replace("{{" + name + "}}", value)
     return HTMLResponse(html, headers={"Content-Security-Policy": PAGE_CSP})

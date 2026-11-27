@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -71,13 +72,38 @@ def test_page_has_no_inline_script_or_style_the_policy_would_block():
     assert " style=" not in html
 
 
-def test_page_footer_links_to_the_api_reference():
-    html = client.get("/").text
-
+def _footer(html: str) -> str:
     footer = re.search(r'<footer class="app-footer">(.*?)</footer>', html, re.S)
     assert footer, "the page has no footer"
-    assert '<a href="/docs">API reference</a>' in footer[1]
+    return footer[1]
+
+
+def test_page_footer_states_the_copyright_and_a_plain_mit_license():
+    footer = _footer(client.get("/").text)
+
+    # The year is filled in by app.py like {{version}}; the licence is plain text (T6
+    # links it later), and nothing in the footer points at another origin.
+    assert f"© 2024–{date.today().year} Sam Estrin · MIT License" in footer
+    copy = re.search(r'<p class="footer-copy">(.*?)</p>', footer, re.S)
+    assert copy, "the footer has no copyright line"
+    assert "<a" not in copy[1]
+    assert "{{" not in footer
+    assert not re.search(r"https?:", footer, re.IGNORECASE)
+
+
+def test_page_footer_links_row_links_only_pages_the_app_serves():
+    footer = _footer(client.get("/").text)
+
+    # The app serves no Privacy, Terms, About or Guide page, so the links row is the
+    # API reference alone, with the version last as text, not a link.
+    assert '<nav aria-label="Footer">' in footer
+    items = re.findall(r"<li>(.*?)</li>", footer, re.S)
+    assert items == ['<a href="/docs">API</a>', f"v{__version__}"]
     assert client.get("/docs").status_code == 200
+
+
+def test_the_docs_page_has_no_app_footer():
+    assert "app-footer" not in client.get("/docs").text
 
 
 def test_page_files_ship_inside_the_package():
@@ -258,7 +284,7 @@ def test_the_page_states_the_default_limits_and_version():
     assert "up to 50 MB and 500 pages." in html
     assert "until the job expires, 1 hour after it ends." in html
     assert "deleted 1 hour after the job ends." in html
-    assert f"LLM PDF OCR {__version__}." in html
+    assert f"<li>v{__version__}</li>" in html
 
 
 def _privacy_line(html: str) -> str:
