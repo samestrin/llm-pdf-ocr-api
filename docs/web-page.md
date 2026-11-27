@@ -11,8 +11,8 @@ A page to use the service from a browser: drop or pick a PDF, choose Markdown or
 
 ## What is on the page
 
-- The header names the app, LLM PDF OCR, with its mark, and has the theme button. When the operator sets `PUBLIC_DEMO_NOTICE`, the notice (`notice` in `/v1/capabilities`) is shown under the name as plain text.
-- Below the form, a closed **Vision model key** panel holds a key or demo code for reading a marked page with a vision model (see below).
+- The header names the app, LLM PDF OCR, with its mark, and has the theme button.
+- On a public demo (`demo_available` is true or the operator set `PUBLIC_DEMO_NOTICE`, in `/v1/capabilities`), an open **Model access** panel sits above the form and the results. It holds a key or demo code for reading a marked page with a vision model (see below). Its first line is the notice (`notice` in `/v1/capabilities`), as plain muted text. On any other server there is no panel.
 - The form states this service's real limits, filled in from `OCR_MAX_FILE_MB` and `OCR_MAX_PAGES` when the page is served (for example "One PDF, up to 50 MB and 500 pages."), and says what happens to your file: it is dropped when its job ends, unless a page needs a vision model, in which case it is kept in memory until the job expires, `OCR_JOB_TTL_SECONDS` after it ends (default 3600, shown in words, such as "1 hour"); the text and page images are deleted at the same time. See [Jobs](api.md#jobs) for how long a job is held.
 - **Try a sample** loads a small bundled PDF (`/static/samples/sample.pdf`, a copy of `tests/fixtures/mixed.pdf`, 15 KB) and reads it, so you can see a result without a file of your own. Its four pages show both routes: pages read from the text layer and scanned pages read by Tesseract.
 - Before a file is chosen, the results panel says what you will see and explains each method in one line: Auto, Text layer, Tesseract and, when the operator configured one, Vision model.
@@ -22,13 +22,13 @@ A page to use the service from a browser: drop or pick a PDF, choose Markdown or
 
 ## Reading a page with a vision model
 
-A page that `auto` read with Tesseract, with no usable text layer and a failed or low-confidence result, is marked as needing a vision model (see [the API](api.md)). Its card says why ("Needs a vision model: ...") and has a **Read with a vision model** button.
+A page that `auto` read with Tesseract, with no usable text layer and a failed or low-confidence result, is marked as needing a vision model (see [the API](api.md)). Its card says why ("Needs a vision model: ...") and, on a public demo, has a **Read with a vision model** button.
 
-- The **Vision model key** panel has a **Provider** menu, a key field, a **Remember on this device** box and a **Clear key** button. The providers are the presets in `/v1/capabilities`, each shown with its vision model. **Demo code** is offered only when `demo_available` is true, and is then chosen first; the field's label changes to "Demo code" for it.
+- The **Model access** panel has a **Provider** menu, a key field, a **Remember on this device** box and a **Clear key** button, in that order: on one row from 48rem wide, stacked below that. The providers are the presets in `/v1/capabilities`, each shown with its vision model. **Demo code** is offered only when `demo_available` is true, and is then chosen first; the field's label changes to "Demo code" for it.
 - Each provider keeps its own key: choosing another provider shows that provider's key, or an empty field, so a key typed for one provider is never sent to another.
 - The keys are kept in the browser's `sessionStorage` (key `vision-keys`, with the provider last chosen), so they last until the tab is closed. With **Remember on this device** ticked they move to `localStorage` instead and are still there in a new tab. **Clear key** removes every provider's key from both and empties the field.
 - The key leaves the page only in the headers of the vision read, `POST /v1/jobs/{id}/pages/{n}/vision`: `X-Model-Preset` with `X-Model-Key`, or `X-Model-Preset: demo` with `X-Demo-Code`. It is never in a URL, a request body or any other request. `tests/test_browser.py` checks this against the browser's whole network log.
-- With no key or code set, the button opens the panel and puts the cursor in the field; nothing is sent.
+- With no key or code set, the button puts the cursor in the panel's key field; nothing is sent.
 - While the page is read, its button is disabled. The answer replaces the page's card, which then shows the method and model ("Method: Vision model · Model: gpt-5-nano") and the new text; the Markdown or JSON output and the downloads follow, and the find box searches the new text. If the provider fails, the API's message is shown as a banner, the page stays marked and the button can be pressed again.
 
 ## Find in the result

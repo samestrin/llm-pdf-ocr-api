@@ -44,12 +44,29 @@
         </nav>
         <button id="theme-toggle" class="theme-toggle" type="button">Dark theme</button>
       </div>
-      <p id="notice" class="notice" hidden></p>
     </header>
 
     <main id="main-content" tabindex="-1">
       <h1>PDF OCR</h1>
       <p class="tagline">Self-hosted service that turns PDFs, scanned or not, into clean text.</p>
+
+      <section id="key-panel" class="panel key-panel" aria-label="Model access" hidden>
+        <p id="notice" class="notice" hidden></p>
+        <div class="key-fields">
+          <label>Provider
+            <select id="key-preset"></select>
+          </label>
+          <label><span id="key-label">API key</span>
+            <input id="key-input" type="password" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="check">
+            <input id="key-remember" type="checkbox">
+            Remember on this device
+          </label>
+          <button id="key-clear" class="secondary" type="button">Clear key</button>
+        </div>
+        <p class="privacy key-note">A page the text layer and Tesseract could not read well can be read by a vision model, with your own key or a demo code. The key stays in this browser and is sent only with that request, in a header; this service passes it to the provider and does not store it.</p>
+      </section>
 
     <div class="app-layout">
       <div class="side">
@@ -91,23 +108,6 @@
           <p class="privacy">Your PDF is processed here and not saved to disk: the file is dropped from memory when its job ends, unless a page needs a vision model, in which case it is kept in memory until the job expires, {{job_ttl}} after it ends. The text and page images are deleted {{job_ttl}} after the job ends.</p>
         </form>
 
-        <details id="key-panel" class="panel key-panel" hidden>
-          <summary>Vision model key</summary>
-          <div class="key-fields">
-            <p class="privacy">A page the text layer and Tesseract could not read well can be read by a vision model, with your own key or a demo code. The key stays in this browser and is sent only with that request, in a header; this service passes it to the provider and does not store it.</p>
-            <label>Provider
-              <select id="key-preset"></select>
-            </label>
-            <label><span id="key-label">API key</span>
-              <input id="key-input" type="password" autocomplete="off" spellcheck="false">
-            </label>
-            <label class="check">
-              <input id="key-remember" type="checkbox">
-              Remember on this device
-            </label>
-            <button id="key-clear" class="secondary" type="button">Clear key</button>
-          </div>
-        </details>
       </div>
 
       <section id="output" class="panel">

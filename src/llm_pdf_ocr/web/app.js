@@ -68,8 +68,10 @@ async function request(url, options) {
   }
 }
 
-// The public notice and the key panel's presets come from the capabilities too. Offer
-// the vision method, and its models, only when the operator configured one.
+// The public notice and the key panel's presets come from the capabilities too. The key
+// panel is for a public demo (demo codes work here, or the operator set a notice); then
+// the notice is its first line. Offer the vision method, and its models, only when the
+// operator configured one.
 async function loadCapabilities() {
   const response = await fetch("/v1/capabilities");
   if (!response.ok) return;
@@ -78,7 +80,9 @@ async function loadCapabilities() {
     $("notice").textContent = caps.notice;
     $("notice").hidden = false;
   }
-  showPresets(caps.presets || [], Boolean(caps.demo_available));
+  if (caps.demo_available || caps.notice) {
+    showPresets(caps.presets || [], Boolean(caps.demo_available));
+  }
   if (!caps.methods.includes("vision")) return;
   const vision = method.querySelector('option[value="vision"]');
   vision.disabled = false;
@@ -372,12 +376,11 @@ function showResult(jobId, doc, format) {
 }
 
 // Read one marked page with a vision model, with the key panel's preset and key or demo
-// code, and put the answer in place of the page. With no key yet, open the panel.
+// code, and put the answer in place of the page. With no key yet, go to the key field.
 async function readWithVision(jobId, doc, number, card, button) {
   const preset = keyPreset.value;
   const secret = keys[preset] || "";
   if (!secret) {
-    keyPanel.open = true;
     keyInput.focus();
     showStatus(
       `Enter ${preset === DEMO ? "a demo code" : "an API key"}, then press Read with a vision model again.`,
