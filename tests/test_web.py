@@ -202,8 +202,9 @@ def test_page_title_header_mark_and_theme_toggle():
 
     assert "<title>LLM PDF OCR</title>" in html
     header = re.search(r'<header class="app-bar">(.*?)</header>', html, re.S)[1]
-    assert re.search(r'<h1 class="app-title">\s*<svg class="logo-mark"', header)
-    assert "LLM PDF OCR" in header
+    assert re.search(r'<a class="app-brand" href="/">\s*<svg class="logo-mark"', header)
+    assert re.search(r"</svg>\s*PDF OCR\s*</a>", header)
+    assert "<h1" not in header
     assert re.search(r'<button id="theme-toggle"[^>]*>Dark theme</button>', header)
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
 
