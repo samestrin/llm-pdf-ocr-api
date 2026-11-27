@@ -746,6 +746,39 @@ def test_the_page_is_skip_link_header_main_and_footer_in_a_full_height_column(li
     assert page.locator("#main-content .app-layout #output").count() == 1
 
 
+def test_the_footer_is_a_links_row_that_stacks_on_a_phone(live_server, page):
+    page.goto(live_server + "/")
+    page.set_viewport_size({"width": 1600, "height": 900})
+
+    wide = page.locator(".app-footer-row").evaluate(
+        """(el) => {
+          const s = getComputedStyle(el);
+          const copy = el.querySelector(".footer-copy").getBoundingClientRect();
+          const nav = el.querySelector("nav").getBoundingClientRect();
+          const link = el.querySelector(".footer-links a");
+          return {
+            display: s.display,
+            justify: s.justifyContent,
+            contentWidth: el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight),
+            copyLeftOfNav: copy.right <= nav.left,
+            borderTop: getComputedStyle(el.parentElement).borderTopWidth,
+            linkColor: getComputedStyle(link).color,
+            footerColor: getComputedStyle(el.parentElement).color,
+          };
+        }"""
+    )
+    assert wide["display"] == "flex" and wide["justify"] == "space-between"
+    assert wide["contentWidth"] == 1216  # 76rem, the shared content width
+    assert wide["copyLeftOfNav"] and wide["borderTop"] == "1px"
+    assert wide["linkColor"] == wide["footerColor"]  # links inherit the muted colour
+
+    page.set_viewport_size({"width": 375, "height": 720})
+    narrow = page.locator(".app-footer-row").evaluate(
+        "(el) => [getComputedStyle(el).flexDirection, getComputedStyle(el).alignItems]"
+    )
+    assert narrow == ["column", "center"]
+
+
 def test_the_skip_link_is_first_in_tab_order_and_moves_focus_to_main(live_server, page):
     page.goto(live_server + "/")
 
