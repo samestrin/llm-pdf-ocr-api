@@ -85,7 +85,10 @@ jobs:
               raise SystemExit("page did not load")
           assert page.headers["Content-Security-Policy"] == "default-src 'self'"
           html = page.read().decode()
-          assets = re.findall(r'(?:src|href)="([^"]+)"', html)
+          # The footer's licence link is the one allowed external URL (EST-9382);
+          # it is a navigation link, not an asset this service serves.
+          license_url = "https://github.com/samestrin/llm-pdf-ocr-api/blob/main/LICENSE"
+          assets = [a for a in re.findall(r'(?:src|href)="([^"]+)"', html) if a != license_url]
           assert assets, html
           for asset in assets:
               assert u.urlopen(base + asset, timeout=2).status == 200, asset
