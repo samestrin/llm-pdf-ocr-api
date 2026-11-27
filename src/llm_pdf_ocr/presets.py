@@ -156,4 +156,5 @@ def request_vision_config(
         concurrency=server.concurrency,
         max_tokens=server.max_tokens,
         max_tokens_param=preset.max_tokens_param,
+        demo=preset.id == DEMO,
     )

@@ -9,7 +9,8 @@ endpoint reports, reasoning tokens included, are returned and logged.
 
 Requests in flight never exceed `VisionConfig.concurrency`, across all callers.
 Errors and log lines never contain the API key, the base URL, or the endpoint's
-own error text, which may echo either.
+own error text, which may echo either. A demo code's 429 is checked for litellm's
+budget markers: a spent budget is `demo_exhausted`, not a transient rate limit.
 """
 
 import base64
@@ -48,16 +49,34 @@ _CUT_OFF = ("length", "max_tokens")
 
 _FENCE = re.compile(r"\A```[a-zA-Z]*\n(.*?)\n?```\Z", re.DOTALL)
 
+# A Retry-After worth passing through: delta-seconds, as litellm sends it (it may be
+# fractional). Anything else (an HTTP-date, or text echoing a credential) is dropped.
+_RETRY_AFTER_SECONDS = re.compile(r"\d{1,6}(\.\d+)?")
+
+# Only this much of a 429 body is read: litellm's error JSON is small, and the body is
+# never shown or logged, only checked for its budget markers.
+_ERROR_BODY_LIMIT = 65536
+
 
 class VisionError(Exception):
     """The vision model could not read a page. The message is safe to show and log."""
 
-    def __init__(self, code: str, message: str, number: int | None = None, status=None, usage=None):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        number: int | None = None,
+        status=None,
+        usage=None,
+        retry_after: str | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.number = number
         self.status = status
         self.usage = usage
+        # The upstream Retry-After, only when it is a number of seconds; else None.
+        self.retry_after = retry_after
 
     def __repr__(self) -> str:
         return f"VisionError(code={self.code!r}, message={str(self)!r}, number={self.number!r})"
@@ -206,10 +225,27 @@ def _post(png: bytes, number: int, config: VisionConfig, model: str) -> bytes:
             return response.read()
     except urllib.error.HTTPError as exc:
         status = exc.code
+        retry_after = exc.headers.get("Retry-After", "").strip()
+        raw = b""
+        if status == 429:
+            try:
+                raw = exc.read(_ERROR_BODY_LIMIT)
+            except (OSError, http.client.HTTPException):
+                raw = b""
         exc.close()
         if status == 429:
+            # litellm answers 429 for a spent budget and for an rpm/tpm limit alike;
+            # only its budget markers tell them apart (the body is never shown or logged).
+            if config.demo and _budget_exceeded(raw):
+                raise VisionError(
+                    "demo_exhausted", "this demo code is used up or expired", number, status
+                ) from None
             raise VisionError(
-                "rate_limited", "the vision model is rate limited (HTTP 429)", number, status
+                "rate_limited",
+                "the vision model is rate limited (HTTP 429)",
+                number,
+                status,
+                retry_after=(retry_after if _RETRY_AFTER_SECONDS.fullmatch(retry_after) else None),
             ) from None
         raise VisionError(
             "http_error", f"the vision model returned HTTP {status}", number, status
@@ -232,6 +268,27 @@ def _timeout(number: int, config: VisionConfig) -> VisionError:
     return VisionError(
         "timeout", f"the vision model did not answer within {config.timeout:g} seconds", number
     )
+
+
+def _budget_exceeded(raw: bytes) -> bool:
+    """True when a demo gateway's 429 body names a spent budget rather than an rpm/tpm limit.
+
+    Only litellm's budget markers are read: the `budget_exceeded` error type, or
+    "Budget has been exceeded" in the message (case-insensitive). A rate limit carries
+    neither. The body itself is never shown or logged: it may echo the demo code.
+    """
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return False
+    if str(error.get("type", "")).lower() == "budget_exceeded":
+        return True
+    return "budget has been exceeded" in str(error.get("message", "")).lower()
 
 
 def _parse(raw: bytes, number: int, model: str, config: VisionConfig) -> VisionResult:

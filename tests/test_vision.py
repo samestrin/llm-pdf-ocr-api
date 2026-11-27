@@ -1,9 +1,11 @@
 import base64
+import http.client
 import json
 import logging
 import threading
 import time
 import urllib.error
+from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pymupdf
@@ -600,7 +602,15 @@ def test_a_non_demo_429_with_a_budget_body_is_unchanged(server, payload):
         {"message": "Budget has been exceeded"},
         [],
     ],
-    ids=["not-json", "empty", "error-not-dict", "marker-in-param", "no-marker", "top-level", "list"],
+    ids=[
+        "not-json",
+        "empty",
+        "error-not-dict",
+        "marker-in-param",
+        "no-marker",
+        "top-level",
+        "list",
+    ],
 )
 def test_a_demo_429_without_budget_markers_stays_rate_limited(server, payload):
     server.reply = lambda body: (429, payload)
@@ -643,7 +653,17 @@ def test_a_budget_body_never_reaches_the_error_or_the_log(server, caplog):
         ("1e3", None),
         ("1234567", None),
     ],
-    ids=["seconds", "fractional", "padded", "http-date", "text", "empty", "negative", "exp", "huge"],
+    ids=[
+        "seconds",
+        "fractional",
+        "padded",
+        "http-date",
+        "text",
+        "empty",
+        "negative",
+        "exp",
+        "huge",
+    ],
 )
 def test_only_a_numeric_retry_after_is_passed_through(server, value, expected):
     server.reply = lambda body: (429, LITELLM_RPM, {"Retry-After": value})
@@ -673,6 +693,39 @@ def test_a_spent_budget_carries_no_retry_after_even_when_sent(server):
 
     assert info.value.code == "demo_exhausted"
     assert info.value.retry_after is None
+
+
+def test_a_demo_429_with_an_oversized_body_stays_rate_limited(server):
+    # Only the first 64 KiB of a body is read; a truncated JSON parses as no markers.
+    huge = {"error": {"type": "budget_exceeded", "message": "x" * 70000}}
+    server.reply = lambda body: (429, huge)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+
+
+def test_a_demo_429_whose_body_cannot_be_read_stays_rate_limited(server, monkeypatch):
+    class BrokenBody:
+        def read(self, amt=None):
+            raise http.client.IncompleteRead(b"partial")
+
+        def close(self):
+            pass
+
+    def urlopen(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            f"{server.base_url}/chat/completions", 429, "Too Many Requests", Message(), BrokenBody()
+        )
+
+    monkeypatch.setattr(vision._opener, "open", urlopen)
+
+    with pytest.raises(VisionError) as info:
+        read_page(text_page(), server.config(demo=True))
+
+    assert info.value.code == "rate_limited"
+    assert_no_secrets(str(info.value), server)
 
 
 # Several pages, in parallel
