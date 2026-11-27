@@ -1,6 +1,7 @@
-// The theme toggle, as in llm-pdf-chatbot: the page follows the system light or dark
-// scheme until the toggle saves a choice. Loaded in <head> without `defer`, so a saved
-// choice is applied before the page is drawn. The button's label names what a click does.
+// The header's two buttons. The theme toggle, as in llm-pdf-chatbot: the page follows the
+// system light or dark scheme until the toggle saves a choice. Loaded in <head> without
+// `defer`, so a saved choice is applied before the page is drawn. The button's label names
+// what a click does.
 "use strict";
 
 (() => {
@@ -38,6 +39,27 @@
         // the choice then lasts until the page closes
       }
       label();
+    });
+  });
+
+  // The phone menu: below 48rem the nav is behind a disclosure button. Escape closes it
+  // and gives focus back to the button; widening the window closes it too.
+  document.addEventListener("DOMContentLoaded", () => {
+    const button = document.getElementById("menu-toggle");
+    const menu = button && document.getElementById(button.getAttribute("aria-controls"));
+    if (!menu) return;
+    const show = (open) => {
+      button.setAttribute("aria-expanded", String(open));
+      menu.hidden = !open;
+    };
+    button.addEventListener("click", () => show(menu.hidden));
+    menu.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      show(false);
+      button.focus();
+    });
+    matchMedia("(min-width: 48rem)").addEventListener("change", (event) => {
+      if (event.matches) show(false);
     });
   });
 })();

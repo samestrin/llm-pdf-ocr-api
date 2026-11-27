@@ -11,21 +11,45 @@
 </head>
 <body>
   <div class="app">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
     <header class="app-bar">
-      <h1 class="app-title">
-        <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-          <path class="logo-mark-page" d="M9 2H19L26 9V28A2 2 0 0 1 24 30H9A2 2 0 0 1 7 28V4A2 2 0 0 1 9 2Z"/>
-          <path class="logo-mark-fold" d="M19 2V7A2 2 0 0 0 21 9H26Z"/>
-          <rect class="logo-mark-line" x="10.5" y="12" width="12" height="2" rx="1"/>
-          <rect class="logo-mark-line" x="10.5" y="16" width="12" height="2" rx="1"/>
-          <rect class="logo-mark-line" x="10.5" y="24" width="8" height="2" rx="1"/>
-          <rect class="logo-mark-scan" x="3" y="19.5" width="26" height="3" rx="1.5"/>
-        </svg>
-        LLM PDF OCR
-      </h1>
-      <button id="theme-toggle" class="theme-toggle" type="button">Dark theme</button>
+      <div class="app-bar-row">
+        <a class="app-brand" href="/">
+          <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <path class="logo-mark-page" d="M9 2H19L26 9V28A2 2 0 0 1 24 30H9A2 2 0 0 1 7 28V4A2 2 0 0 1 9 2Z"/>
+            <path class="logo-mark-fold" d="M19 2V7A2 2 0 0 0 21 9H26Z"/>
+            <rect class="logo-mark-line" x="10.5" y="12" width="12" height="2" rx="1"/>
+            <rect class="logo-mark-line" x="10.5" y="16" width="12" height="2" rx="1"/>
+            <rect class="logo-mark-line" x="10.5" y="24" width="8" height="2" rx="1"/>
+            <rect class="logo-mark-scan" x="3" y="19.5" width="26" height="3" rx="1.5"/>
+          </svg>
+          PDF OCR
+        </a>
+        <nav class="app-nav" aria-label="Main">
+          <a href="/" aria-current="page">Extract</a>
+          <a href="/docs">API reference</a>
+        </nav>
+        <button id="menu-toggle" class="secondary menu-toggle" type="button"
+          aria-label="Menu" aria-controls="app-menu" aria-expanded="false">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="2" y="3" width="12" height="2" rx="1"/>
+            <rect x="2" y="7" width="12" height="2" rx="1"/>
+            <rect x="2" y="11" width="12" height="2" rx="1"/>
+          </svg>
+        </button>
+        <nav id="app-menu" class="app-menu" aria-label="Main" hidden>
+          <a href="/" aria-current="page">Extract</a>
+          <a href="/docs">API reference</a>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button">Dark theme</button>
+      </div>
       <p id="notice" class="notice" hidden></p>
     </header>
+
+    <main id="main-content" tabindex="-1">
+      <h1>PDF OCR</h1>
+      <p class="tagline">Self-hosted service that turns PDFs, scanned or not, into clean text.</p>
 
     <div class="app-layout">
       <div class="side">
@@ -86,7 +110,7 @@
         </details>
       </div>
 
-      <main id="output" class="panel">
+      <section id="output" class="panel">
         <div id="empty-state" class="empty-state">
           <h2>Your results appear here</h2>
           <p id="empty">Pick a PDF, or press Try a sample, then press Extract. Each page's text appears beside its image, followed by the whole document as Markdown or JSON to copy or download.</p>
@@ -119,8 +143,9 @@
           </div>
           <pre id="result"></pre>
         </div>
-      </main>
+      </section>
     </div>
+    </main>
 
     <footer class="app-footer">
       <p>LLM PDF OCR {{version}}. MIT license. The HTTP API is at /v1/extract and /v1/jobs; see the <a href="/docs">API reference</a>.</p>

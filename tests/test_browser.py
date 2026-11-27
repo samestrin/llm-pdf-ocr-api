@@ -458,7 +458,7 @@ def test_a_network_failure_shows_a_plain_message(live_server, page, path):
 
 
 def _tab_to(page, element_id: str) -> None:
-    for _ in range(20):
+    for _ in range(30):  # a whole lap of the page: the header alone has six stops
         page.keyboard.press("Tab")
         if page.evaluate("document.activeElement.id") == element_id:
             return
@@ -524,8 +524,10 @@ def test_every_control_has_an_accessible_name(live_server, page):
     controls = page.locator("input, select, button")
     ids = [controls.nth(n).get_attribute("id") for n in range(controls.count())]
     key = {"key-preset", "key-input", "key-remember", "key-clear"}
-    assert set(ids) == CONTROLS | key | {"model", "find-input", "find-prev", "find-next"}
+    find = {"find-input", "find-prev", "find-next"}
+    assert set(ids) == CONTROLS | key | find | {"menu-toggle", "model"}
     page.locator("#key-panel summary").click()
+    # The menu button shows only below 48rem; its name is checked at 375 px.
     names = {
         "theme-toggle": "Light theme" if page.evaluate(_DARK) else "Dark theme",
         "file": "PDF file",
@@ -665,11 +667,164 @@ def test_the_header_names_the_app_with_its_mark(live_server, page):
     page.goto(live_server + "/")
 
     assert page.title() == "LLM PDF OCR"
-    title = page.locator("h1.app-title")
-    expect(title).to_have_text("LLM PDF OCR")
-    expect(title.locator("svg.logo-mark")).to_be_visible()
-    fill = title.locator(".logo-mark-page").evaluate("(p) => getComputedStyle(p).fill")
+    brand = page.locator("header.app-bar .app-brand")
+    expect(brand).to_have_text("PDF OCR")
+    expect(brand.locator("svg.logo-mark")).to_be_visible()
+    fill = brand.locator(".logo-mark-page").evaluate("(p) => getComputedStyle(p).fill")
     assert fill == "rgb(109, 40, 217)"  # the violet accent, #6D28D9
+
+
+_BOX = "(el) => { const r = el.getBoundingClientRect(); return [r.left, r.width, r.height]; }"
+
+
+def test_at_1600_px_the_content_is_76rem_wide_under_a_56_px_sticky_bar(live_server, page):
+    page.set_viewport_size({"width": 1600, "height": 900})
+    page.goto(live_server + "/")
+
+    left, width, _ = page.locator("#main-content > :first-child").evaluate(_BOX)
+    assert width == 1216 and left == (1600 - 1216) / 2
+    bar = page.locator("header.app-bar")
+    assert bar.evaluate(_BOX) == [0, 1600, 56]
+    assert bar.evaluate("(h) => getComputedStyle(h).position") == "sticky"
+    # The bar's own row lines up with the content below it.
+    assert page.locator(".app-brand").evaluate(_BOX)[0] == left
+    toggle = page.locator("#theme-toggle").evaluate(_BOX)
+    assert toggle[0] + toggle[1] == left + width and toggle[2] == 42
+
+    nav = page.locator("header nav.app-nav")
+    expect(nav).to_be_visible()
+    expect(nav.get_by_role("link", name="Extract")).to_have_attribute("href", "/")
+    expect(nav.get_by_role("link", name="Extract")).to_have_attribute("aria-current", "page")
+    expect(nav.get_by_role("link", name="API reference")).to_have_attribute("href", "/docs")
+    expect(page.locator("#menu-toggle")).to_be_hidden()
+    page.keyboard.press("Tab")  # the skip link
+    for name in ("PDF OCR", "Extract", "API reference"):  # each link in the bar shows a ring
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.textContent.trim()") == name
+        assert page.evaluate(_RING)["style"] not in ("none", "auto")
+
+    page.set_viewport_size({"width": 1600, "height": 400})  # short enough to scroll
+    page.evaluate("window.scrollTo(0, 300)")
+    assert page.evaluate("window.scrollY") == 300
+    assert page.locator("header.app-bar").evaluate("(h) => h.getBoundingClientRect().top") == 0
+
+
+def test_the_page_is_skip_link_header_main_and_footer_in_a_full_height_column(live_server, page):
+    page.goto(live_server + "/")
+
+    shell = page.evaluate(
+        """() => {
+          const main = document.getElementById("main-content");
+          const column = main.parentElement;
+          const style = getComputedStyle(column);
+          return {
+            children: [...column.children].map((el) => el.tagName.toLowerCase()
+              + (el.className ? "." + el.className.split(" ")[0] : "")),
+            display: style.display,
+            direction: style.flexDirection,
+            minHeight: style.minHeight === innerHeight + "px",
+            height: column.getBoundingClientRect().height,
+            grow: getComputedStyle(main).flexGrow,
+            tabindex: main.getAttribute("tabindex"),
+          };
+        }"""
+    )
+    assert shell["children"] == ["a.skip-link", "header.app-bar", "main", "footer.app-footer"]
+    assert (shell["display"], shell["direction"]) == ("flex", "column")
+    assert shell["minHeight"] and shell["height"] >= 720  # 100vh
+    assert shell["grow"] == "1" and shell["tabindex"] == "-1"
+
+    first = page.locator("#main-content > :first-child")
+    assert first.evaluate("(el) => el.tagName") == "H1"
+    expect(first).to_have_text("PDF OCR")
+    expect(page.locator("#main-content > :nth-child(2)")).to_have_text(
+        "Self-hosted service that turns PDFs, scanned or not, into clean text."
+    )
+    assert page.locator("h1").count() == 1
+    assert page.locator("section#output.panel").count() == 1
+    assert page.locator("main#output").count() == 0
+    assert page.locator("#main-content .app-layout #output").count() == 1
+
+
+def test_the_skip_link_is_first_in_tab_order_and_moves_focus_to_main(live_server, page):
+    page.goto(live_server + "/")
+
+    page.keyboard.press("Tab")
+    skip = page.locator(".skip-link")
+    expect(skip).to_be_focused()
+    expect(skip).to_have_text("Skip to main content")
+    expect(skip).to_be_in_viewport()
+    assert page.evaluate(_RING)["style"] not in ("none", "auto")
+
+    page.keyboard.press("Enter")
+    expect(page.locator("#main-content")).to_be_focused()
+    page.keyboard.press("Tab")  # the next Tab lands in the form, not back in the header
+    assert page.evaluate("document.activeElement.closest('main')?.id") == "main-content"
+
+
+def test_the_toggle_still_switches_the_theme_from_the_bar(live_server, page):
+    page.emulate_media(color_scheme="light")
+    page.goto(live_server + "/")
+
+    page.locator("header.app-bar #theme-toggle").click()
+
+    assert _background(page) == DARK_BG
+    bar = page.locator("header.app-bar").evaluate("(h) => getComputedStyle(h).backgroundColor")
+    assert bar == "rgb(23, 26, 32)"  # the dark surface
+
+
+@pytest.mark.parametrize("key", ["Enter", "Space"])
+def test_at_375_px_the_menu_button_opens_and_closes_with_the_keyboard(live_server, page, key):
+    page.set_viewport_size({"width": 375, "height": 800})
+    page.goto(live_server + "/")
+
+    button = page.locator("#menu-toggle")
+    expect(button).to_be_visible()
+    expect(button).to_have_accessible_name("Menu")
+    menu = page.locator("#" + button.get_attribute("aria-controls"))
+    expect(page.locator("header nav.app-nav")).to_be_hidden()
+    expect(button).to_have_attribute("aria-expanded", "false")
+    expect(menu).to_be_hidden()
+
+    _tab_to(page, "menu-toggle")
+    page.keyboard.press(key)
+    expect(button).to_have_attribute("aria-expanded", "true")
+    expect(menu).to_be_visible()
+    expect(menu.get_by_role("link", name="Extract")).to_have_attribute("href", "/")
+    expect(menu.get_by_role("link", name="API reference")).to_have_attribute("href", "/docs")
+    page.keyboard.press("Tab")
+    expect(menu.get_by_role("link", name="Extract")).to_be_focused()
+
+    page.keyboard.press("Shift+Tab")
+    page.keyboard.press(key)
+    expect(button).to_have_attribute("aria-expanded", "false")
+    expect(menu).to_be_hidden()
+
+    page.keyboard.press(key)
+    expect(button).to_have_attribute("aria-expanded", "true")
+    page.keyboard.press("Tab")
+    page.keyboard.press("Escape")  # Escape closes it and gives focus back to the button
+    expect(button).to_have_attribute("aria-expanded", "false")
+    expect(menu).to_be_hidden()
+    expect(button).to_be_focused()
+
+    widths = page.evaluate(_WIDTHS)
+    assert widths[0] <= widths[1] == 375
+    assert page.locator("header.app-bar").evaluate(_BOX)[2] == 56
+
+
+def test_widening_past_48rem_closes_the_menu_and_shows_the_nav(live_server, page):
+    page.set_viewport_size({"width": 375, "height": 800})
+    page.goto(live_server + "/")
+    page.click("#menu-toggle")
+    expect(page.locator("#menu-toggle")).to_have_attribute("aria-expanded", "true")
+
+    page.set_viewport_size({"width": 1024, "height": 800})
+
+    expect(page.locator("header nav.app-nav")).to_be_visible()
+    expect(page.locator("#app-menu")).to_be_hidden()
+    expect(page.locator("#menu-toggle")).to_be_hidden()
+    expect(page.locator("#menu-toggle")).to_have_attribute("aria-expanded", "false")
 
 
 def test_try_a_sample_reads_the_bundled_pdf_without_a_file(live_server, page, fresh_jobs):
