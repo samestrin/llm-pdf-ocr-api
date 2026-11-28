@@ -13,6 +13,9 @@ client = TestClient(app)
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "llm_pdf_ocr" / "web"
 
+# The one external URL the page may reference: the footer's licence link (EST-9382).
+LICENSE_URL = "https://github.com/samestrin/llm-pdf-ocr-api/blob/main/LICENSE"
+
 
 def _assets(html: str) -> list[str]:
     # A fragment such as the skip link's "#main-content" is a place on the page, not a file.
@@ -40,7 +43,8 @@ def test_page_offers_both_formats_and_the_methods():
 
 
 def test_page_assets_are_served_from_this_service():
-    assets = _assets(client.get("/").text)
+    # The licence link is a navigation link to GitHub, not an asset this service serves.
+    assets = [a for a in _assets(client.get("/").text) if a != LICENSE_URL]
 
     assert any(a.endswith(".js") for a in assets)
     assert any(a.endswith(".css") for a in assets)
@@ -49,18 +53,37 @@ def test_page_assets_are_served_from_this_service():
         assert client.get(asset).status_code == 200, asset
 
 
+def _references_external_origin(body: str) -> bool:
+    # The SVG namespace in the favicon is a name, not a request to that origin.
+    body = body.replace('xmlns="http://www.w3.org/2000/svg"', "")
+    # The footer's licence link is the one allowed external URL, and only as a
+    # complete quoted value; a near-miss of it is still refused (EST-9382).
+    body = body.replace(f'"{LICENSE_URL}"', '""')
+    return bool(
+        re.search(r"https?:", body, re.IGNORECASE)
+        or re.search(r"""(?:src|href|action)\s*=\s*["']?//""", body)
+        or re.search(r"""url\(\s*["']?//""", body)
+        or re.search(r"""@import""", body)
+        or re.search(r"""(?:fetch|import)\(\s*["'`]//""", body)
+    )
+
+
 def test_page_and_assets_reference_no_external_origin():
     html = client.get("/").text
-    bodies = {"/": html} | {a: client.get(a).text for a in _assets(html)}
+    assets = [a for a in _assets(html) if a != LICENSE_URL]
+    bodies = {"/": html} | {a: client.get(a).text for a in assets}
 
     for path, body in bodies.items():
-        # The SVG namespace in the favicon is a name, not a request to that origin.
-        body = body.replace('xmlns="http://www.w3.org/2000/svg"', "")
-        assert not re.search(r"https?:", body, re.IGNORECASE), path
-        assert not re.search(r"""(?:src|href|action)\s*=\s*["']?//""", body), path
-        assert not re.search(r"""url\(\s*["']?//""", body), path
-        assert not re.search(r"""@import""", body), path
-        assert not re.search(r"""(?:fetch|import)\(\s*["'`]//""", body), path
+        assert not _references_external_origin(body), path
+
+
+def test_external_origin_check_accepts_the_licence_url():
+    assert not _references_external_origin(f'<a href="{LICENSE_URL}">MIT License</a>')
+
+
+def test_external_origin_check_rejects_any_other_external_url():
+    assert _references_external_origin('<a href="https://evil.example/LICENSE">MIT License</a>')
+    assert _references_external_origin(f'<a href="{LICENSE_URL}-other">MIT License</a>')
 
 
 def test_page_has_no_inline_script_or_style_the_policy_would_block():
@@ -78,17 +101,23 @@ def _footer(html: str) -> str:
     return footer[1]
 
 
-def test_page_footer_states_the_copyright_and_a_plain_mit_license():
+def test_page_footer_states_the_copyright_and_links_the_mit_license():
     footer = _footer(client.get("/").text)
 
-    # The year is filled in by app.py like {{version}}; the licence is plain text (T6
-    # links it later), and nothing in the footer points at another origin.
-    assert f"© 2024–{date.today().year} Sam Estrin · MIT License" in footer
+    # The year is filled in by app.py like {{version}}. T6 (EST-9382) supersedes T3's
+    # plain-text licence: it links to the repo's LICENSE on GitHub, the one allowed
+    # external URL.
+    assert f"© 2024–{date.today().year} Sam Estrin · " in footer
     copy = re.search(r'<p class="footer-copy">(.*?)</p>', footer, re.S)
     assert copy, "the footer has no copyright line"
-    assert "<a" not in copy[1]
+    assert f'<a href="{LICENSE_URL}">MIT License</a>' in copy[1]
     assert "{{" not in footer
-    assert not re.search(r"https?:", footer, re.IGNORECASE)
+
+
+def test_page_footer_mit_license_href_is_exactly_the_repo_licence_url():
+    footer = _footer(client.get("/").text)
+
+    assert re.findall(r'<a href="([^"]*)">MIT License</a>', footer) == [LICENSE_URL]
 
 
 def test_page_footer_links_row_links_only_pages_the_app_serves():
