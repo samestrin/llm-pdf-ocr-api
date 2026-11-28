@@ -1,8 +1,8 @@
 /*
- * Design tokens copied from llm-pdf-chatbot frontend/src/theme.css at
- * e1f5a988f6070a7519b14eb0c2e9b9d5afffc580, the shared base of the owner's demo apps.
- * Changed for this app: the accent, primary and focus colours are violet (this app's own
- * accent), and --color-danger-subtle is added for the error banner.
+ * Design tokens follow the shared demo-shell spec (fleet-deploy docs/demo-shell.md),
+ * the shared base of the owner's demo apps; tests/test_style_tokens.py pins every
+ * shared token to its table. Changed for this app: the accent, primary and focus
+ * colours are violet (this app's own accent column), and the find highlights are added.
  *
  * Each colour is `light-dark(light, dark)`. The page follows the system scheme
  * (`color-scheme: light dark`) unless the theme toggle sets `data-theme`.
@@ -32,7 +32,7 @@
   --color-disabled: light-dark(#e4e7ec, #2a2f38);
   --color-on-disabled: light-dark(#545a65, #a1a7b3);
   --color-danger: light-dark(#b3261e, #ff8a80);
-  --color-danger-subtle: light-dark(#fdecea, #2d1717);
+  --color-danger-subtle: light-dark(#fdecea, #3a1d1b);
   --color-warn: light-dark(#8a4a00, #f0a640);
   /* Find: amber highlights; the current match wears the accent. Both pass AA. */
   --color-find: light-dark(#ffe08a, #6b5300);
