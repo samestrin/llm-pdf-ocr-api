@@ -709,6 +709,17 @@ def test_at_1600_px_the_content_is_76rem_wide_under_a_56_px_sticky_bar(live_serv
     assert page.locator("header.app-bar").evaluate("(h) => h.getBoundingClientRect().top") == 0
 
 
+def test_primary_and_secondary_buttons_are_42_px_tall_with_16_px_text(live_server, page):
+    page.set_viewport_size({"width": 1600, "height": 900})
+    page.goto(live_server + "/")
+
+    # The spec's default button size: 24 px line + 16 px padding + 2 px border.
+    for selector in ("#submit", "#sample"):  # primary button, button.secondary
+        button = page.locator(selector)
+        assert button.evaluate(_BOX)[2] == 42, selector
+        assert button.evaluate("(b) => getComputedStyle(b).fontSize") == "16px", selector
+
+
 def test_the_page_is_skip_link_header_main_and_footer_in_a_full_height_column(live_server, page):
     page.goto(live_server + "/")
 
