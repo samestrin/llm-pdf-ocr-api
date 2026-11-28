@@ -21,19 +21,19 @@ Live demo: https://ocr.samestrin.com
 
 ## Demo
 
-![A recorded session of the web page: Try a sample reads the bundled four-page PDF, each page's text sits beside its image with the method that read it (Text layer for the pages with a text layer, Tesseract with a confidence for the scanned ones), the find box highlights a word and steps through its matches, and the API reference at /docs opens on POST /v1/extract](docs/demo-web-page.gif)
+![A recorded session of the web page: under the sticky PDF OCR app bar with its Extract and API reference links and the theme button, Try a sample reads the bundled four-page PDF, each page's text sits beside its image with the method that read it (Text layer for the pages with a text layer, Tesseract with a confidence for the scanned ones), the find box highlights a word and steps through its matches, and the API reference at /docs opens on POST /v1/extract](docs/demo-web-page.gif)
 
 The GIF is a real session, recorded by `uv run python docs/make_demo_gif.py`: the app runs on a local port, the bundled sample is read by the text layer and by Tesseract, and nothing is stubbed.
 
-![The web page in the light theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-light-desktop.png)
+![The web page in the light theme at desktop width, after reading a two-page PDF: the sticky PDF OCR app bar with its Extract and API reference links, the theme button and the PDF OCR title and tagline above the form, then each page's image beside its text, then the full Markdown with copy and download buttons, and the footer with the copyright, API link and version](docs/screenshot-web-page-light-desktop.png)
 
-![The web page in the dark theme at desktop width, after reading a two-page PDF: each page's image beside its text, then the full Markdown with copy and download buttons](docs/screenshot-web-page-dark-desktop.png)
+![The web page in the dark theme at desktop width, after reading a two-page PDF: the sticky PDF OCR app bar with its Extract and API reference links, the theme button and the PDF OCR title and tagline above the form, then each page's image beside its text, then the full Markdown with copy and download buttons, and the footer with the copyright, API link and version](docs/screenshot-web-page-dark-desktop.png)
 
-![The web page before a file is chosen: the form with its limits and a Try a sample button, and a results panel that explains each method](docs/screenshot-web-page-empty-light-desktop.png)
+![The web page before a file is chosen: the PDF OCR app bar and title, the form with its limits and a Try a sample button, and a results panel that explains each method](docs/screenshot-web-page-empty-light-desktop.png)
 
 | Light, phone | Dark, phone |
 | --- | --- |
-| ![The web page in the light theme at phone width, with the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-light-phone.png) | ![The web page in the dark theme at phone width, with the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-dark-phone.png) |
+| ![The web page in the light theme at phone width, with the app bar and its menu button, the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-light-phone.png) | ![The web page in the dark theme at phone width, with the app bar and its menu button, the upload card, the two pages stacked and the Markdown output](docs/screenshot-web-page-dark-phone.png) |
 
 The screenshots are made by `uv run python docs/make_screenshots.py`, with a stubbed jobs API, so they are the same on every machine.
 
